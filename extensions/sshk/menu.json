@@ -1,0 +1,30 @@
+{
+  "items": [
+    {
+      "name": "sshk: SSH Client",
+      "priority": 0,
+      "items": [
+        {
+          "name": "Install SSH into kterm",
+          "priority": 0,
+          "action": "bin/install.sh"
+        },
+        {
+          "name": "Generate SSH Key",
+          "priority": 1,
+          "action": "bin/genkey.sh"
+        },
+        {
+          "name": "Export Public SSH Key",
+          "priority": 2,
+          "action": "bin/showkey.sh"
+        },
+        {
+          "name": "Uninstall SSH from kterm",
+          "priority": 3,
+          "action": "bin/uninstall.sh"
+        }
+      ]
+    }
+  ]
+}

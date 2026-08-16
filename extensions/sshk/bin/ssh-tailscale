@@ -1,0 +1,33 @@
+#!/bin/sh
+# ssh-tailscale - wrapper around dbclient for connecting over Tailscale userspace mode
+
+BINDIR="$(cd "$(dirname "$0")" && pwd)"
+KEY="$BINDIR/kindle_native_key"
+DBCLIENT="$BINDIR/dbclient"
+
+if [ -z "$1" ]; then
+    echo "Usage: ssh-tailscale user@host [command]"
+    exit 1
+fi
+
+TARGET="$1"
+shift
+HOST="${TARGET#*@}"
+
+# Try to find tailscale binary
+if [ -f "/mnt/us/extensions/tailscale/bin/tailscale" ]; then
+    TAILSCALE="/mnt/us/extensions/tailscale/bin/tailscale"
+elif which tailscale >/dev/null 2>&1; then
+    TAILSCALE="tailscale"
+else
+    echo "Error: tailscale binary not found at /mnt/us/extensions/tailscale/bin/tailscale or in PATH" >&2
+    exit 1
+fi
+
+# Set up identity key if it exists
+OPTS="-y"
+if [ -f "$KEY" ]; then
+    OPTS="$OPTS -i $KEY"
+fi
+
+exec "$DBCLIENT" $OPTS -J "$TAILSCALE nc $HOST 22" "$TARGET" "$@"

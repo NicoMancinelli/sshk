@@ -1,0 +1,13 @@
+#!/bin/sh
+# ssh - wrapper around dbclient for Kindle
+BINDIR="$(cd "$(dirname "$0")" && pwd)"
+KEY="$BINDIR/kindle_native_key"
+
+# Always accept host keys since rootfs /root/.ssh/known_hosts is read-only by default
+OPTS="-y"
+
+if [ -f "$KEY" ]; then
+    OPTS="$OPTS -i $KEY"
+fi
+
+exec "$BINDIR/dbclient" $OPTS "$@"

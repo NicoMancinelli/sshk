@@ -1,0 +1,4 @@
+#!/bin/sh
+# dropbearkey wrapper for dropbearmulti on Kindle FAT32 filesystem
+BINDIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$BINDIR/dropbearmulti" dropbearkey "$@"
