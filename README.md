@@ -6,14 +6,16 @@ Normally, Kindle devices do not have an SSH client installed, and compiling one 
 
 ## Features
 
-- **Standalone ARM Static Binary**: Statically linked Dropbear client independent of system libraries.
-- **kterm Integration**: Automated setup that modifies `kterm.sh` to add the binaries to your terminal's `PATH`.
-- **Easy Key Management**: Generate `ed25519` SSH keys on the Kindle and export the public key to your Kindle's USB drive root (`kindle_ssh_key.pub`) for easy copying on your computer.
-- **Multiple Keys**: Generate and manage multiple named SSH keys for different hosts or purposes.
-- **SCP File Transfer**: Transfer files to and from remote servers, including over Tailscale.
+- **Interactive Quick-Connect Menu**: Type `sshk` in kterm to open a numbered connection menu — connect with 1 keypress without typing long hostnames.
+- **WiFi Keepalive & Sleep Inhibitor**: Automatically stops the Kindle from entering sleep/screensaver mode while an SSH session is active, preventing dropped connections.
+- **Inbound SSH Server (2-in-1)**: Start/Stop a Dropbear SSH server directly from KUAL on port 2222 to connect *into* your Kindle from your PC.
+- **Landscape Terminal Preset**: Open `kterm` pre-rotated into landscape mode with optimized font size from KUAL.
+- **SCP File Transfer**: Transfer files to and from remote servers, including over Tailscale (`scp` and `scp-tailscale`).
 - **Host Aliases**: Save frequently used connections in `hosts.conf` for quick access (e.g., `ssh myserver` instead of `ssh admin@192.168.1.10:2222`).
 - **Tailscale Support**: Includes `ssh-tailscale` and `scp-tailscale` wrappers that automatically tunnel connections through Tailscale userspace mode (`tailscale nc`), bypassing the lack of native `tun.ko` routing.
-- **Custom Port Support**: Connect to SSH servers on non-standard ports, including over Tailscale tunnels.
+- **Easy Key Management**: Generate `ed25519` SSH keys on the Kindle and export the public key to your Kindle's USB drive root (`kindle_ssh_key.pub`).
+- **Multiple Keys**: Generate and manage multiple named SSH keys for different hosts or purposes (`listkeys.sh` and `ssh -i <name>`).
+- **Custom Port Support**: Connect to SSH servers on non-standard ports (`-p port`), including over Tailscale tunnels.
 - **Known Hosts**: Automatic setup of writable known hosts storage, so host keys are verified and remembered.
 - **VFAT/FAT32 Compatibility**: Uses shell scripts instead of symbolic links to ensure the extension copies flawlessly over USB mass storage.
 

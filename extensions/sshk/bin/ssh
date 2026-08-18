@@ -107,4 +107,15 @@ if [ $HAS_I -eq 0 ]; then
     fi
 fi
 
-exec "$BINDIR/dbclient" $OPTS "$@"
+# Inhibit screensaver while SSH is active (restores on exit)
+if command -v lipc-set-prop >/dev/null 2>&1; then
+    lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null || true
+    cleanup() {
+        lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null || true
+    }
+    trap cleanup EXIT INT TERM HUP
+fi
+
+"$BINDIR/dbclient" $OPTS "$@"
+EXIT_CODE=$?
+exit $EXIT_CODE

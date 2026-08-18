@@ -10,28 +10,43 @@
           "action": "bin/install.sh"
         },
         {
-          "name": "Generate New SSH Key",
+          "name": "🖥️ Open SSH Terminal (Landscape)",
           "priority": 1,
-          "action": "bin/genkey.sh"
+          "action": "bin/kterm-landscape.sh"
         },
         {
-          "name": "Export Public SSH Key",
+          "name": "🟢 Start SSH Server (Port 2222)",
           "priority": 2,
-          "action": "bin/showkey.sh"
+          "action": "bin/server-start.sh"
         },
         {
-          "name": "List SSH Keys",
+          "name": "🔴 Stop SSH Server",
           "priority": 3,
+          "action": "bin/server-stop.sh"
+        },
+        {
+          "name": "📋 List SSH Keys",
+          "priority": 4,
           "action": "bin/listkeys.sh"
         },
         {
-          "name": "About sshk",
-          "priority": 4,
+          "name": "🔑 Generate New SSH Key",
+          "priority": 5,
+          "action": "bin/genkey.sh"
+        },
+        {
+          "name": "📤 Export Public SSH Key",
+          "priority": 6,
+          "action": "bin/showkey.sh"
+        },
+        {
+          "name": "ℹ️ About sshk",
+          "priority": 7,
           "action": "bin/version.sh"
         },
         {
-          "name": "Uninstall SSH from kterm",
-          "priority": 5,
+          "name": "🗑️ Uninstall SSH from kterm",
+          "priority": 8,
           "action": "bin/uninstall.sh"
         }
       ]

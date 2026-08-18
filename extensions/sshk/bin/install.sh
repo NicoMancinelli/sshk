@@ -25,10 +25,16 @@ echo "=== sshk v$VERSION: 1-Tap Installation ==="
 chmod +x "$BINDIR/dropbearmulti"
 chmod +x "$BINDIR/dbclient"
 chmod +x "$BINDIR/dropbearkey"
+chmod +x "$BINDIR/dropbear" 2>/dev/null
 chmod +x "$BINDIR/ssh"
+chmod +x "$BINDIR/sshk" 2>/dev/null
 chmod +x "$BINDIR/ssh-tailscale"
+chmod +x "$BINDIR/ssh-menu" 2>/dev/null
 chmod +x "$BINDIR/scp" 2>/dev/null
 chmod +x "$BINDIR/scp-tailscale" 2>/dev/null
+chmod +x "$BINDIR/server-start.sh" 2>/dev/null
+chmod +x "$BINDIR/server-stop.sh" 2>/dev/null
+chmod +x "$BINDIR/kterm-landscape.sh" 2>/dev/null
 chmod +x "$BINDIR/install.sh"
 chmod +x "$BINDIR/uninstall.sh"
 chmod +x "$BINDIR/genkey.sh"

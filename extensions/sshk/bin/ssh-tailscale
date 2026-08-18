@@ -135,4 +135,15 @@ if [ $HAS_I -eq 0 ]; then
     fi
 fi
 
-exec "$DBCLIENT" $OPTS -J "$TAILSCALE nc $HOST $PORT" "$@"
+# Inhibit screensaver while SSH is active (restores on exit)
+if command -v lipc-set-prop >/dev/null 2>&1; then
+    lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null || true
+    cleanup() {
+        lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null || true
+    }
+    trap cleanup EXIT INT TERM HUP
+fi
+
+"$DBCLIENT" $OPTS -J "$TAILSCALE nc $HOST $PORT" "$@"
+EXIT_CODE=$?
+exit $EXIT_CODE

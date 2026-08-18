@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Version tracking**: `VERSION` file and "About sshk" menu item displaying version, Dropbear version, key count, and known hosts status
 - **Key listing**: "List SSH Keys" menu item and `listkeys.sh` script showing all keys with fingerprints
 - **Fingerprint display**: `showkey.sh` now displays the key fingerprint on the e-ink screen and prints the full public key to stdout
+- **Interactive Quick-Connect Menu**: `bin/ssh-menu` and `bin/sshk` CLI command for 1-keypress connection selection
+- **WiFi Keepalive & Sleep Inhibitor**: Automated `lipc-set-prop` power management in `ssh` and `ssh-tailscale` to keep WiFi active and prevent Kindle sleeping during SSH sessions
+- **Inbound SSH Server (2-in-1)**: `bin/server-start.sh` and `bin/server-stop.sh` scripts for running Dropbear SSH server on port 2222 with KUAL menu integration
+- **Landscape Terminal Preset**: `bin/kterm-landscape.sh` for 1-click launch of landscape terminal with auto-launched `ssh-menu`
 - **1-Click Desktop Installers**: `install-to-kindle.sh` (macOS/Linux) and `install-to-kindle.bat` (Windows) for zero-friction USB installation and kterm pre-configuration
 - **1-Command Server Authorization**: `authorize-server.sh` script to automatically detect Kindle's public key and install it to the remote server's `authorized_keys` with a single command
 - **Self-Healing Wrappers**: `ssh` and `ssh-tailscale` auto-generate default `ed25519` keys on first run if not already created

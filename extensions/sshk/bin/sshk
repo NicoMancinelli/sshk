@@ -1,0 +1,4 @@
+#!/bin/sh
+# sshk - CLI shortcut to ssh-menu in kterm
+BINDIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$BINDIR/ssh-menu" "$@"
