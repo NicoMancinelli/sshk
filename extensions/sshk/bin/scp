@@ -1,0 +1,17 @@
+#!/bin/sh
+
+BINDIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Check if dropbearmulti scp is supported
+if "$BINDIR/dropbearmulti" scp --help 2>&1 | grep -qi 'not compiled\|not found'; then
+    echo "Error: SCP not available. The dropbearmulti binary was not compiled with SCP support."
+    exit 1
+fi
+
+KEY_ARGS=""
+if [ -f "$BINDIR/kindle_native_key" ]; then
+    KEY_ARGS="-i $BINDIR/kindle_native_key"
+fi
+
+# Exec dropbearmulti scp. Do not quote KEY_ARGS so it evaluates empty or to "-i path"
+exec "$BINDIR/dropbearmulti" scp $KEY_ARGS "$@"

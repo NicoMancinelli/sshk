@@ -1,13 +1,110 @@
 #!/bin/sh
 # ssh - wrapper around dbclient for Kindle
 BINDIR="$(cd "$(dirname "$0")" && pwd)"
-KEY="$BINDIR/kindle_native_key"
 
-# Always accept host keys since rootfs /root/.ssh/known_hosts is read-only by default
-OPTS="-y"
+# Known hosts check
+OPTS=""
+if [ -w "/root/.ssh/known_hosts" ] || touch /root/.ssh/known_hosts 2>/dev/null; then
+    :
+else
+    OPTS="-y"
+fi
 
-if [ -f "$KEY" ]; then
-    OPTS="$OPTS -i $KEY"
+CONF="$BINDIR/../hosts.conf"
+HAS_I=0
+
+COUNT=$#
+i=0
+while [ $i -lt $COUNT ]; do
+    arg="$1"
+    shift
+    i=$((i + 1))
+    
+    case "$arg" in
+        -i)
+            if [ $i -lt $COUNT ]; then
+                keyarg="$1"
+                shift
+                i=$((i + 1))
+                case "$keyarg" in
+                    */*) set -- "$@" "-i" "$keyarg" ;;
+                    *) set -- "$@" "-i" "$BINDIR/kindle_${keyarg}_key" ;;
+                esac
+                HAS_I=1
+            else
+                set -- "$@" "-i"
+            fi
+            ;;
+        -p|-L|-R|-l)
+            set -- "$@" "$arg"
+            if [ $i -lt $COUNT ]; then
+                set -- "$@" "$1"
+                shift
+                i=$((i + 1))
+            fi
+            ;;
+        -*)
+            set -- "$@" "$arg"
+            ;;
+        *)
+            TARGET="$arg"
+            case "$TARGET" in
+                *@*) 
+                    set -- "$@" "$TARGET"
+                    ;;
+                *)
+                    if [ -f "$CONF" ]; then
+                        MATCH=$(grep -v '^[[:space:]]*#' "$CONF" | grep -v '^[[:space:]]*$' | awk -v a="$TARGET" '$1 == a {print; exit}')
+                        if [ -n "$MATCH" ]; then
+                            ALIAS_HOST=$(echo "$MATCH" | awk '{print $2}')
+                            ALIAS_KEY=$(echo "$MATCH" | awk '{print $3}')
+                            
+                            case "$ALIAS_HOST" in
+                                *:*)
+                                    ALIAS_PORT="${ALIAS_HOST##*:}"
+                                    ALIAS_HOST="${ALIAS_HOST%:*}"
+                                    set -- "$@" "-p" "$ALIAS_PORT"
+                                    ;;
+                            esac
+                            
+                            if [ -n "$ALIAS_KEY" ] && [ $HAS_I -eq 0 ]; then
+                                AKEY="$BINDIR/kindle_${ALIAS_KEY}_key"
+                                if [ -f "$AKEY" ]; then
+                                    set -- "$@" "-i" "$AKEY"
+                                    HAS_I=1
+                                fi
+                            fi
+                            set -- "$@" "$ALIAS_HOST"
+                        else
+                            set -- "$@" "$TARGET"
+                        fi
+                    else
+                        set -- "$@" "$TARGET"
+                    fi
+                    ;;
+            esac
+            
+            while [ $i -lt $COUNT ]; do
+                set -- "$@" "$1"
+                shift
+                i=$((i + 1))
+            done
+            ;;
+    esac
+done
+
+if [ $HAS_I -eq 0 ]; then
+    KEY="$BINDIR/kindle_native_key"
+    if [ ! -f "$KEY" ]; then
+        echo "sshk: First run detected - generating default SSH key..."
+        "$BINDIR/dropbearkey" -t ed25519 -f "$KEY" >/dev/null 2>&1
+        if [ -f "$KEY" ]; then
+            "$BINDIR/showkey.sh" "native" >/dev/null 2>&1
+        fi
+    fi
+    if [ -f "$KEY" ]; then
+        OPTS="$OPTS -i $KEY"
+    fi
 fi
 
 exec "$BINDIR/dbclient" $OPTS "$@"

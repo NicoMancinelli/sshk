@@ -2,19 +2,115 @@
 # ssh-tailscale - wrapper around dbclient for connecting over Tailscale userspace mode
 
 BINDIR="$(cd "$(dirname "$0")" && pwd)"
-KEY="$BINDIR/kindle_native_key"
 DBCLIENT="$BINDIR/dbclient"
+CONF="$BINDIR/../hosts.conf"
 
 if [ -z "$1" ]; then
-    echo "Usage: ssh-tailscale user@host [command]"
+    echo "Usage: ssh-tailscale [options] user@host [command]"
     exit 1
 fi
 
-TARGET="$1"
-shift
-HOST="${TARGET#*@}"
+PORT=22
+HAS_I=0
+TARGET=""
+HOST=""
 
-# Try to find tailscale binary
+COUNT=$#
+i=0
+while [ $i -lt $COUNT ]; do
+    arg="$1"
+    shift
+    i=$((i + 1))
+    
+    case "$arg" in
+        -i)
+            if [ $i -lt $COUNT ]; then
+                keyarg="$1"
+                shift
+                i=$((i + 1))
+                case "$keyarg" in
+                    */*) set -- "$@" "-i" "$keyarg" ;;
+                    *) set -- "$@" "-i" "$BINDIR/kindle_${keyarg}_key" ;;
+                esac
+                HAS_I=1
+            else
+                set -- "$@" "-i"
+            fi
+            ;;
+        -p)
+            if [ $i -lt $COUNT ]; then
+                PORT="$1"
+                shift
+                i=$((i + 1))
+            fi
+            ;;
+        -L|-R|-l)
+            set -- "$@" "$arg"
+            if [ $i -lt $COUNT ]; then
+                set -- "$@" "$1"
+                shift
+                i=$((i + 1))
+            fi
+            ;;
+        -*)
+            set -- "$@" "$arg"
+            ;;
+        *)
+            TARGET="$arg"
+            case "$TARGET" in
+                *@*) 
+                    HOST="${TARGET#*@}"
+                    set -- "$@" "$TARGET"
+                    ;;
+                *)
+                    if [ -f "$CONF" ]; then
+                        MATCH=$(grep -v '^[[:space:]]*#' "$CONF" | grep -v '^[[:space:]]*$' | awk -v a="$TARGET" '$1 == a {print; exit}')
+                        if [ -n "$MATCH" ]; then
+                            ALIAS_HOST=$(echo "$MATCH" | awk '{print $2}')
+                            ALIAS_KEY=$(echo "$MATCH" | awk '{print $3}')
+                            
+                            case "$ALIAS_HOST" in
+                                *:*)
+                                    ALIAS_PORT="${ALIAS_HOST##*:}"
+                                    ALIAS_HOST="${ALIAS_HOST%:*}"
+                                    PORT="$ALIAS_PORT"
+                                    ;;
+                            esac
+                            
+                            if [ -n "$ALIAS_KEY" ] && [ $HAS_I -eq 0 ]; then
+                                AKEY="$BINDIR/kindle_${ALIAS_KEY}_key"
+                                if [ -f "$AKEY" ]; then
+                                    set -- "$@" "-i" "$AKEY"
+                                    HAS_I=1
+                                fi
+                            fi
+                            HOST="${ALIAS_HOST#*@}"
+                            set -- "$@" "$ALIAS_HOST"
+                        else
+                            HOST="${TARGET#*@}"
+                            set -- "$@" "$TARGET"
+                        fi
+                    else
+                        HOST="${TARGET#*@}"
+                        set -- "$@" "$TARGET"
+                    fi
+                    ;;
+            esac
+            
+            while [ $i -lt $COUNT ]; do
+                set -- "$@" "$1"
+                shift
+                i=$((i + 1))
+            done
+            ;;
+    esac
+done
+
+if [ -z "$HOST" ]; then
+    echo "Error: missing target"
+    exit 1
+fi
+
 if [ -f "/mnt/us/extensions/tailscale/bin/tailscale" ]; then
     TAILSCALE="/mnt/us/extensions/tailscale/bin/tailscale"
 elif which tailscale >/dev/null 2>&1; then
@@ -24,10 +120,19 @@ else
     exit 1
 fi
 
-# Set up identity key if it exists
 OPTS="-y"
-if [ -f "$KEY" ]; then
-    OPTS="$OPTS -i $KEY"
+if [ $HAS_I -eq 0 ]; then
+    KEY="$BINDIR/kindle_native_key"
+    if [ ! -f "$KEY" ]; then
+        echo "sshk: First run detected - generating default SSH key..."
+        "$BINDIR/dropbearkey" -t ed25519 -f "$KEY" >/dev/null 2>&1
+        if [ -f "$KEY" ]; then
+            "$BINDIR/showkey.sh" "native" >/dev/null 2>&1
+        fi
+    fi
+    if [ -f "$KEY" ]; then
+        OPTS="$OPTS -i $KEY"
+    fi
 fi
 
-exec "$DBCLIENT" $OPTS -J "$TAILSCALE nc $HOST 22" "$TARGET" "$@"
+exec "$DBCLIENT" $OPTS -J "$TAILSCALE nc $HOST $PORT" "$@"

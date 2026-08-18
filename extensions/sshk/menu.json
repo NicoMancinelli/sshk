@@ -5,12 +5,12 @@
       "priority": 0,
       "items": [
         {
-          "name": "Install SSH into kterm",
+          "name": "⚡ 1-Tap Setup (Install & Key)",
           "priority": 0,
           "action": "bin/install.sh"
         },
         {
-          "name": "Generate SSH Key",
+          "name": "Generate New SSH Key",
           "priority": 1,
           "action": "bin/genkey.sh"
         },
@@ -20,8 +20,18 @@
           "action": "bin/showkey.sh"
         },
         {
-          "name": "Uninstall SSH from kterm",
+          "name": "List SSH Keys",
           "priority": 3,
+          "action": "bin/listkeys.sh"
+        },
+        {
+          "name": "About sshk",
+          "priority": 4,
+          "action": "bin/version.sh"
+        },
+        {
+          "name": "Uninstall SSH from kterm",
+          "priority": 5,
           "action": "bin/uninstall.sh"
         }
       ]

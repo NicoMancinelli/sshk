@@ -24,3 +24,13 @@ else
         eips_print "kterm not found, nothing to do."
     fi
 fi
+
+# Remove known_hosts symlink if we created it
+if [ -L "/root/.ssh" ]; then
+    if command -v mntroot >/dev/null 2>&1; then
+        mntroot rw 2>/dev/null
+        rm -f /root/.ssh
+        mkdir -p /root/.ssh
+        mntroot ro 2>/dev/null
+    fi
+fi

@@ -8,14 +8,15 @@ eips_print() {
 }
 
 BINDIR="$(cd "$(dirname "$0")" && pwd)"
-KEY="$BINDIR/kindle_native_key"
+KEYNAME="${1:-native}"
+KEY="$BINDIR/kindle_${KEYNAME}_key"
 
 if [ -f "$KEY" ]; then
-    eips_print "Key already exists!"
+    eips_print "Key '$KEYNAME' already exists!"
     exit 0
 fi
 
-eips_print "Generating ed25519 key..."
+eips_print "Generating ed25519 key '$KEYNAME'..."
 # Run dropbearkey to generate the key
 "$BINDIR/dropbearkey" -t ed25519 -f "$KEY" > /tmp/genkey.out 2>&1
 
@@ -23,7 +24,7 @@ if [ $? -eq 0 ]; then
     # Key generated successfully
     eips_print "Key generated! Saving public key..."
     # Call showkey to output the public key to /mnt/us/
-    "$BINDIR/showkey.sh"
+    "$BINDIR/showkey.sh" "$KEYNAME"
 else
     eips_print "Failed to generate key! Check log."
     cat /tmp/genkey.out > /mnt/us/sshk_error.log

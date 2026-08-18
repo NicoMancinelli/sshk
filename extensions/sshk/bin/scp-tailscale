@@ -1,0 +1,17 @@
+#!/bin/sh
+
+BINDIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [ $# -lt 1 ]; then
+    echo "Usage: scp-tailscale [options] source... target"
+    exit 1
+fi
+
+# Note: Tailscale discovery is handled by ssh-tailscale (used via -S flag)
+
+KEY_ARGS=""
+if [ -f "$BINDIR/kindle_native_key" ]; then
+    KEY_ARGS="-i $BINDIR/kindle_native_key"
+fi
+
+exec "$BINDIR/dropbearmulti" scp -S "$BINDIR/ssh-tailscale" $KEY_ARGS "$@"
