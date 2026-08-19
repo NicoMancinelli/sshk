@@ -98,3 +98,33 @@ echo "Your Kindle can now connect to ${BOLD}$TARGET${NC} without a password!"
 echo "Open kterm on your Kindle and run:"
 echo "     ${BLUE}ssh $TARGET${NC}"
 echo ""
+
+# Optional: Inbound authorization (authorize this PC to SSH into Kindle)
+LOCAL_PUBKEY=""
+for key in "$HOME/.ssh/id_ed25519.pub" "$HOME/.ssh/id_rsa.pub" "$HOME/.ssh/id_ecdsa.pub"; do
+    if [ -f "$key" ]; then
+        LOCAL_PUBKEY="$key"
+        break
+    fi
+done
+
+KINDLE_SSH_DIR=""
+for kdir in "/Volumes/Kindle/extensions/sshk/.ssh" "/media/$USER/Kindle/extensions/sshk/.ssh" "./extensions/sshk/.ssh"; do
+    if [ -d "$kdir" ]; then
+        KINDLE_SSH_DIR="$kdir"
+        break
+    fi
+done
+
+if [ -n "$LOCAL_PUBKEY" ] && [ -n "$KINDLE_SSH_DIR" ]; then
+    mkdir -p "$KINDLE_SSH_DIR"
+    touch "$KINDLE_SSH_DIR/authorized_keys"
+    PC_KEY_DATA=$(cat "$LOCAL_PUBKEY")
+    if ! grep -qxF "$PC_KEY_DATA" "$KINDLE_SSH_DIR/authorized_keys" 2>/dev/null; then
+        echo "$PC_KEY_DATA" >> "$KINDLE_SSH_DIR/authorized_keys"
+        echo "${GREEN}✓ Also authorized this computer to SSH *into* your Kindle (Port 2222)!${NC}"
+        echo "  When you start the SSH Server in KUAL, you can connect with:"
+        echo "  ${BLUE}ssh root@<kindle-ip> -p 2222${NC}"
+        echo ""
+    fi
+fi

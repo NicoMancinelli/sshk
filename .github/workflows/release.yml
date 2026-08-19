@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build release zip
+        run: |
+          zip -r sshk.zip \
+            extensions \
+            install-to-kindle.sh \
+            install-to-kindle.bat \
+            install-to-kindle.ps1 \
+            authorize-server.sh \
+            QUICKSTART.md \
+            README.md \
+            CHANGELOG.md \
+            -x "*.DS_Store*"
+
+      - name: Generate Checksums
+        run: |
+          sha256sum sshk.zip > SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sshk.zip
+            SHA256SUMS
+          generate_release_notes: true

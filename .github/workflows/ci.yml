@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Validate Shell Script Syntax (sh -n)
+        run: |
+          echo "=== Checking shell syntax ==="
+          for f in extensions/sshk/bin/* install-to-kindle.sh authorize-server.sh; do
+            if [ -f "$f" ] && [ "$f" != "extensions/sshk/bin/dropbearmulti" ]; then
+              sh -n "$f" && echo "✓ $f" || { echo "✗ Syntax error in $f"; exit 1; }
+            fi
+          done
+
+      - name: Validate JSON (menu.json)
+        run: |
+          python3 -c "
+          import json
+          data = json.load(open('extensions/sshk/menu.json'))
+          assert 'items' in data
+          assert len(data['items']) > 0
+          print('✓ menu.json is valid')
+          "
+
+      - name: Run ShellCheck
+        run: |
+          # Allow intentional word splitting for OPTS/KEY_ARGS (SC2086)
+          shellcheck -e SC2086,SC2016 \
+            extensions/sshk/bin/*.sh \
+            extensions/sshk/bin/ssh \
+            extensions/sshk/bin/ssh-tailscale \
+            extensions/sshk/bin/ssh-menu \
+            extensions/sshk/bin/sshk \
+            extensions/sshk/bin/scp \
+            extensions/sshk/bin/scp-tailscale \
+            install-to-kindle.sh \
+            authorize-server.sh
+
+      - name: Test Host Alias Resolution
+        run: |
+          python3 -c "
+          import os
+          conf = 'extensions/sshk/hosts.conf'
+          assert os.path.exists(conf), 'hosts.conf missing'
+          print('✓ hosts.conf exists')
+          "

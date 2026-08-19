@@ -12,12 +12,13 @@ Get SSH running on your jailbroken Kindle in 3 easy steps!
      ```bash
      ./install-to-kindle.sh
      ```
-   - **Windows**: Double-click `install-to-kindle.bat`.
+   - **Windows (PowerShell)**: Right-click `install-to-kindle.ps1` -> *Run with PowerShell* (or double-click `install-to-kindle.bat`).
 3. **Eject Kindle & Open kterm**:
    - Open `kterm` from KUAL and type:
      ```bash
-     ssh user@host
+     sshk
      ```
+     *(Opens the interactive connection menu — connect with 1 keypress!)*
 
 ---
 
@@ -40,7 +41,7 @@ To log into your remote server without a password:
    ```bash
    ./authorize-server.sh user@your-server-ip
    ```
-3. That's it! Your Kindle's SSH public key is automatically copied and configured on your server.
+3. That's it! Your Kindle's SSH public key is automatically copied and configured on your server. *(It also authorizes your PC to SSH into your Kindle!)*
 
 ---
 
@@ -48,8 +49,10 @@ To log into your remote server without a password:
 
 | Action | Command |
 |---|---|
+| **Quick-Connect Menu** | `sshk` *(or `ssh-menu`)* |
 | Connect via SSH | `ssh user@host` |
 | Connect via Tailscale | `ssh-tailscale user@host` |
 | Connect with custom port | `ssh -p 2222 user@host` |
 | Copy file to server | `scp file.txt user@host:/path/` |
-| Connect using saved alias | `ssh myserver` *(configured in `extensions/sshk/hosts.conf`)* |
+| Connect using saved alias | `ssh myserver` *(configured in `hosts.conf` or via `sshk` menu)* |
+| Refresh E-Ink Screen | `eips-refresh` *(clears ghosting)* |

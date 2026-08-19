@@ -109,5 +109,16 @@ sequenceDiagram
 *   **Key Storage**: Private keys (`id_ed25519`) are stored on the `/mnt/us` partition. Since this is accessible via USB mass storage, physical access to the unlocked Kindle grants access to the private key.
 *   **Known Hosts**: To prevent Man-In-The-Middle (MITM) attacks, host keys are verified against `known_hosts`. Dropbear's default strict checking is used where possible, falling back to user prompts on first connection.
 
+## Power Management & Keepalive
+Kindle firmware aggressively manages power by invoking the `powerd` daemon after 10 minutes of user inactivity, dimming the screen to a screensaver and shutting off the `wlan0` interface. To ensure long-lived SSH sessions do not drop prematurely:
+*   The `ssh` and `ssh-tailscale` wrappers invoke `lipc-set-prop com.lab126.powerd preventScreenSaver 1` before connecting.
+*   POSIX shell signal traps (`EXIT`, `INT`, `TERM`, `HUP`) automatically restore `preventScreenSaver 0` when the SSH session ends or disconnects, safely returning the device to standard power management.
+
+## Inbound SSH Server Architecture
+In addition to the outbound client, `sshk` includes an inbound Dropbear SSH daemon (`server-start.sh`):
+*   Listens on port `2222` to avoid conflicts with system services.
+*   Utilizes a persistent host key stored at `extensions/sshk/bin/kindle_host_ed25519_key`.
+*   Authorizes inbound connections using public keys located in `extensions/sshk/.ssh/authorized_keys` (managed automatically via `authorize-server.sh`).
+
 ## Tailscale Integration
 Because the Kindle kernel usually lacks the `tun.ko` module, standard Tailscale mesh routing does not work (Tailscale cannot create a `tailscale0` network interface). However, Tailscale can run in userspace mode. The `ssh-tailscale` wrapper leverages the `tailscale nc <host> <port>` command to pipe standard input/output through the Tailscale network, acting as an OpenSSH `ProxyCommand` to connect to internal Tailnet nodes.

@@ -1,0 +1,11 @@
+#!/bin/sh
+# eips-refresh - Flashes and refreshes Kindle e-ink screen to clear ghosting
+
+if command -v eips >/dev/null 2>&1; then
+    # Full e-ink flash & clear
+    eips -f -c 2>/dev/null || eips -c 2>/dev/null
+    echo "E-ink display refreshed."
+else
+    clear 2>/dev/null || echo ""
+    echo "Screen cleared."
+fi

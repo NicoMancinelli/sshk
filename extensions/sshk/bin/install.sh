@@ -41,6 +41,7 @@ chmod +x "$BINDIR/genkey.sh"
 chmod +x "$BINDIR/showkey.sh"
 chmod +x "$BINDIR/listkeys.sh" 2>/dev/null
 chmod +x "$BINDIR/version.sh" 2>/dev/null
+chmod +x "$BINDIR/eips-refresh" 2>/dev/null
 
 echo "[1/4] Permissions set."
 

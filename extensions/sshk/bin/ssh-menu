@@ -1,22 +1,48 @@
 #!/bin/sh
-# ssh-menu - Interactive SSH connection picker for kterm on Kindle
+# ssh-menu - Interactive SSH connection manager & picker for kterm on Kindle
 
 BINDIR="$(cd "$(dirname "$0")" && pwd)"
 CONF="$BINDIR/../hosts.conf"
 
 clear 2>/dev/null || echo ""
+
+# Query system status if running on Kindle
+STATUS_INFO=""
+BATT_LEVEL=""
+WIFI_INFO=""
+
+if command -v lipc-get-prop >/dev/null 2>&1; then
+    BATT_LEVEL=$(lipc-get-prop com.lab126.powerd battLevel 2>/dev/null)
+    WIFI_SSID=$(lipc-get-prop com.lab126.wifid essid 2>/dev/null)
+    if [ -n "$BATT_LEVEL" ]; then
+        STATUS_INFO="Battery: ${BATT_LEVEL}%"
+    fi
+    if [ -n "$WIFI_SSID" ] && [ "$WIFI_SSID" != "null" ]; then
+        STATUS_INFO="${STATUS_INFO:+$STATUS_INFO | }WiFi: $WIFI_SSID"
+    fi
+fi
+
+# Fallback WiFi IP detection
+if [ -z "$WIFI_INFO" ] && command -v ifconfig >/dev/null 2>&1; then
+    IP=$(ifconfig wlan0 2>/dev/null | grep 'inet addr:' | cut -d: -f2 | awk '{print $1}')
+    if [ -n "$IP" ]; then
+        STATUS_INFO="${STATUS_INFO:+$STATUS_INFO | }IP: $IP"
+    fi
+fi
+
 echo "=========================================="
 echo "          ⚡ sshk: Quick Connect"
+if [ -n "$STATUS_INFO" ]; then
+    echo "  [ $STATUS_INFO ]"
+fi
 echo "=========================================="
 echo ""
 
-ALIASES=""
 COUNT=0
 
 if [ -f "$CONF" ]; then
     # Read non-comment, non-empty lines
     while IFS= read -r line || [ -n "$line" ]; do
-        # Trim leading whitespace
         trimmed=$(echo "$line" | sed 's/^[ \t]*//')
         case "$trimmed" in
             \#*|"") continue ;;
@@ -32,7 +58,6 @@ if [ -f "$CONF" ]; then
                 fi
                 
                 printf "  [%d] %-12s -> %s%s\n" "$COUNT" "$alias_name" "$alias_target" "$key_info"
-                # Store mapping: index:alias
                 eval "ALIAS_${COUNT}=\"$alias_name\""
                 ;;
         esac
@@ -40,16 +65,14 @@ if [ -f "$CONF" ]; then
 fi
 
 if [ "$COUNT" -eq 0 ]; then
-    echo "  (No saved hosts found in hosts.conf)"
-    echo "  You can add aliases in /mnt/us/extensions/sshk/hosts.conf"
+    echo "  (No saved hosts in hosts.conf)"
     echo ""
 fi
 
 echo ""
-echo "  [c] Custom SSH (user@host)"
-echo "  [t] Custom Tailscale SSH (user@host)"
-echo "  [k] List SSH Keys"
-echo "  [q] Quit"
+echo "  [c] Custom SSH           [t] Custom Tailscale"
+echo "  [a] Add Host Alias       [k] List SSH Keys"
+echo "  [r] Refresh E-Ink Screen [q] Quit"
 echo ""
 printf "Enter choice: "
 read -r choice
@@ -59,11 +82,50 @@ case "$choice" in
         echo "Exiting."
         exit 0
         ;;
+    r|R)
+        "$BINDIR/eips-refresh"
+        exec "$0"
+        ;;
     k|K)
+        echo ""
         "$BINDIR/listkeys.sh"
         echo ""
         printf "Press Enter to return to menu..."
         read -r _
+        exec "$0"
+        ;;
+    a|A)
+        echo ""
+        echo "--- Add New Host Alias ---"
+        printf "Alias name (e.g. myserver): "
+        read -r new_alias
+        if [ -z "$new_alias" ]; then
+            echo "Cancelled."
+            sleep 1
+            exec "$0"
+        fi
+        
+        printf "Connection target (user@host[:port]): "
+        read -r new_target
+        if [ -z "$new_target" ]; then
+            echo "Cancelled."
+            sleep 1
+            exec "$0"
+        fi
+        
+        printf "Custom key name (optional, press Enter for default): "
+        read -r new_key
+        
+        entry="$new_alias $new_target"
+        if [ -n "$new_key" ]; then
+            entry="$entry $new_key"
+        fi
+        
+        # Ensure hosts.conf exists and append
+        touch "$CONF"
+        echo "$entry" >> "$CONF"
+        echo "✓ Added '$new_alias' to hosts.conf!"
+        sleep 1
         exec "$0"
         ;;
     c|C)
@@ -83,7 +145,6 @@ case "$choice" in
         fi
         ;;
     *)
-        # Check if numeric choice matches an alias
         selected_alias=""
         eval "selected_alias=\"\$ALIAS_${choice}\""
         if [ -n "$selected_alias" ]; then
