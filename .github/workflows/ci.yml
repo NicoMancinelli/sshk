@@ -30,10 +30,17 @@ jobs:
             fi
           done
 
-      - name: Validate JSON (menu.json)
+      - name: Validate KUAL Files (config.xml & menu.json)
         run: |
           python3 -c "
-          import json
+          import json, xml.etree.ElementTree as ET
+          # Validate XML
+          tree = ET.parse('extensions/sshk/config.xml')
+          root = tree.getroot()
+          assert root.tag == 'extension', 'Root element must be extension'
+          print('✓ config.xml is valid XML')
+          
+          # Validate JSON
           data = json.load(open('extensions/sshk/menu.json'))
           assert 'items' in data
           assert len(data['items']) > 0

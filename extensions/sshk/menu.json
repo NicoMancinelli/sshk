@@ -1,55 +1,49 @@
 {
   "items": [
     {
-      "name": "sshk: SSH Client",
+      "name": "⚡ 1-Tap Setup (Install & Key)",
       "priority": 0,
-      "items": [
-        {
-          "name": "⚡ 1-Tap Setup (Install & Key)",
-          "priority": 0,
-          "action": "bin/install.sh"
-        },
-        {
-          "name": "🖥️ Open SSH Terminal (Landscape)",
-          "priority": 1,
-          "action": "bin/kterm-landscape.sh"
-        },
-        {
-          "name": "🟢 Start SSH Server (Port 2222)",
-          "priority": 2,
-          "action": "bin/server-start.sh"
-        },
-        {
-          "name": "🔴 Stop SSH Server",
-          "priority": 3,
-          "action": "bin/server-stop.sh"
-        },
-        {
-          "name": "📋 List SSH Keys",
-          "priority": 4,
-          "action": "bin/listkeys.sh"
-        },
-        {
-          "name": "🔑 Generate New SSH Key",
-          "priority": 5,
-          "action": "bin/genkey.sh"
-        },
-        {
-          "name": "📤 Export Public SSH Key",
-          "priority": 6,
-          "action": "bin/showkey.sh"
-        },
-        {
-          "name": "ℹ️ About sshk",
-          "priority": 7,
-          "action": "bin/version.sh"
-        },
-        {
-          "name": "🗑️ Uninstall SSH from kterm",
-          "priority": 8,
-          "action": "bin/uninstall.sh"
-        }
-      ]
+      "action": "bin/install.sh"
+    },
+    {
+      "name": "🖥️ Open SSH Terminal (Landscape)",
+      "priority": 1,
+      "action": "bin/kterm-landscape.sh"
+    },
+    {
+      "name": "🟢 Start SSH Server (Port 2222)",
+      "priority": 2,
+      "action": "bin/server-start.sh"
+    },
+    {
+      "name": "🔴 Stop SSH Server",
+      "priority": 3,
+      "action": "bin/server-stop.sh"
+    },
+    {
+      "name": "📋 List SSH Keys",
+      "priority": 4,
+      "action": "bin/listkeys.sh"
+    },
+    {
+      "name": "🔑 Generate New SSH Key",
+      "priority": 5,
+      "action": "bin/genkey.sh"
+    },
+    {
+      "name": "📤 Export Public SSH Key",
+      "priority": 6,
+      "action": "bin/showkey.sh"
+    },
+    {
+      "name": "ℹ️ About sshk",
+      "priority": 7,
+      "action": "bin/version.sh"
+    },
+    {
+      "name": "🗑️ Uninstall SSH from kterm",
+      "priority": 8,
+      "action": "bin/uninstall.sh"
     }
   ]
 }

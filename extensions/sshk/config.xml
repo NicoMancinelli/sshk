@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension>
+	<information>
+		<name>sshk: SSH Client</name>
+		<version>1.1</version>
+		<author>Nico Mancinelli</author>
+		<id>sshk</id>
+	</information>
+	<menus>
+		<menu type="json" priority="0">menu.json</menu>
+	</menus>
+</extension>
