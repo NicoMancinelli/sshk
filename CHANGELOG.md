@@ -4,13 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.1.1] - 2026-08-23
 
 ### Fixed
 - **Security**: `authorize-server.sh` no longer falls back to uploading the Kindle's *private* key to the remote server when no `.pub` file is found. It now extracts the public half locally with `ssh-keygen -y` first
 - CI: resolved all ShellCheck failures (`SC2034`, `SC2181`, `SC2317`) so the pipeline passes on `main`
 
 ### Added
+- Functional test harness (`tests/run-tests.sh`, 20 assertions) wired into CI, covering wrapper argv behavior: host aliases, port expansion, named keys, first-run key generation, screensaver inhibit/restore, Tailscale ProxyCommand construction, and scp delegation
+- Reproducible Docker cross-compile for `dropbearmulti` (`build/build-dropbear.sh`) with pinned musl toolchain, QEMU smoke test, and a manual CI validation workflow
+- `DROPBEAR_VERSION` pinning the shipped binary's release (2020.81)
 - `LICENSE` (MIT) for the project
 - `DROPBEAR-LICENSE` — verbatim license notices for the bundled Dropbear 2020.81 binary, now also shipped in release zips
 
