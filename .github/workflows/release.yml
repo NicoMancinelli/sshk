@@ -25,6 +25,8 @@ jobs:
             QUICKSTART.md \
             README.md \
             CHANGELOG.md \
+            LICENSE \
+            DROPBEAR-LICENSE \
             -x "*.DS_Store*"
 
       - name: Generate Checksums
