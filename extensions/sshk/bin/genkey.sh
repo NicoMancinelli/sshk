@@ -18,9 +18,7 @@ fi
 
 eips_print "Generating ed25519 key '$KEYNAME'..."
 # Run dropbearkey to generate the key
-"$BINDIR/dropbearkey" -t ed25519 -f "$KEY" > /tmp/genkey.out 2>&1
-
-if [ $? -eq 0 ]; then
+if "$BINDIR/dropbearkey" -t ed25519 -f "$KEY" > /tmp/genkey.out 2>&1; then
     # Key generated successfully
     eips_print "Key generated! Saving public key..."
     # Call showkey to output the public key to /mnt/us/

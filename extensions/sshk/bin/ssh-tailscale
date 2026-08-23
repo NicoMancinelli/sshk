@@ -139,6 +139,7 @@ fi
 if command -v lipc-set-prop >/dev/null 2>&1; then
     lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null || true
     cleanup() {
+        # shellcheck disable=SC2317  # reached via signal trap, not a direct call
         lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null || true
     }
     trap cleanup EXIT INT TERM HUP

@@ -60,11 +60,13 @@ if [ -z "$PUBKEY_FILE" ]; then
         "/Volumes/Kindle/extensions/sshk/bin/kindle_native_key" \
         "./extensions/sshk/bin/kindle_native_key"; do
         if [ -f "$path" ]; then
-            # Found private key file on Kindle
+            # Found the private key file; extract its PUBLIC half locally
+            # (never upload or install private key material on a server)
             TEMP_PUB="/tmp/kindle_temp_key.pub"
-            # If dropbearkey or ssh-keygen can extract it, or if it already exists
-            PUBKEY_FILE="$path"
-            break
+            if command -v ssh-keygen >/dev/null 2>&1 && ssh-keygen -y -f "$path" > "$TEMP_PUB" 2>/dev/null; then
+                PUBKEY_FILE="$TEMP_PUB"
+                break
+            fi
         fi
     done
 fi
