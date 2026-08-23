@@ -1,0 +1,55 @@
+#!/bin/sh
+# Stub emulating the dropbearmulti multi-call binary for tests.
+# Production wrappers invoke it under different names (busybox-style), so
+# dispatch on the $0 basename first, then on $1 for direct applet calls.
+LOG="${SSHK_TEST_LOG:-}"
+SELF="$(basename "$0")"
+APPLET="${1:-}"
+
+is_keygen="0"
+if [ "$SELF" = "dropbearkey" ] || [ "$APPLET" = "dropbearkey" ]; then
+    is_keygen="1"
+fi
+
+if [ "$is_keygen" = "1" ]; then
+    # dropbearkey-style call: create the -f target, print public material.
+    prev=""
+    for a in "$@"; do
+        if [ "$prev" = "-f" ] && [ -n "$a" ]; then
+            : > "$a"
+        fi
+        prev="$a"
+    done
+    echo "Public key portion is:"
+    echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAItesttesttesttesttesttesttesttesttesttest test@kindle"
+    echo "Fingerprint: sha224 00:11:22:33:44:55:66:77:88:99:aa:bb:cc:dd"
+    exit 0
+fi
+
+if [ "$SELF" != "dropbearmulti" ]; then
+    # Any other name (dbclient wrapper etc.): just log argv.
+    if [ -n "$LOG" ]; then
+        printf '%s\n' "$@" > "$LOG"
+    fi
+    exit 0
+fi
+
+case "$APPLET" in
+    scp)
+        if [ "${FAKE_NO_SCP:-0}" = "1" ]; then
+            echo "dbclient: program 'scp' is not compiled in"
+            exit 1
+        fi
+        if [ "${2:-}" = "--help" ]; then
+            # Must NOT contain 'not compiled' / 'not found' so the scp wrapper
+            # believes SCP support exists.
+            echo "usage: scp [-S ssh-path] source... target"
+            exit 0
+        fi
+        ;;
+esac
+
+if [ -n "$LOG" ]; then
+    printf '%s\n' "$@" > "$LOG"
+fi
+exit 0

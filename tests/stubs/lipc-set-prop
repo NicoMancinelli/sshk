@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stub lipc-set-prop for tests: appends argv to $LIPC_LOG, one line per call.
+printf '%s\n' "$@" >> "${LIPC_LOG:?LIPC_LOG not set}"
+exit 0
