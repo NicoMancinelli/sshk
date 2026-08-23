@@ -69,3 +69,7 @@ jobs:
           assert os.path.exists(conf), 'hosts.conf missing'
           print('✓ hosts.conf exists')
           "
+
+      - name: Run Functional Tests (wrapper argv behavior)
+        run: |
+          ./tests/run-tests.sh

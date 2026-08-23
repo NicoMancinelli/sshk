@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stub dbclient for tests: captures argv to $SSHK_TEST_LOG, one arg per line.
+printf '%s\n' "$@" > "${SSHK_TEST_LOG:?SSHK_TEST_LOG not set}"
+exit 0
