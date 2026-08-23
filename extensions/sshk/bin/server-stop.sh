@@ -15,13 +15,10 @@ eips_print_row 1 "========================================"
 eips_print_row 2 "  sshk: Stopping SSH Server..."
 eips_print_row 3 "========================================"
 
-STOPPED=0
-
 if [ -f "$PIDFILE" ]; then
     PID=$(cat "$PIDFILE" 2>/dev/null)
     if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
         kill "$PID" 2>/dev/null || true
-        STOPPED=1
     fi
     rm -f "$PIDFILE"
 fi

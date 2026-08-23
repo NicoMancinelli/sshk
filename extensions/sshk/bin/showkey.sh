@@ -23,9 +23,7 @@ if [ ! -f "$KEY" ]; then
 fi
 
 # Extract public key line starting with ssh-ed25519
-"$BINDIR/dropbearkey" -y -f "$KEY" | grep "^ssh-" > "$PUBKEY_OUT"
-
-if [ $? -eq 0 ]; then
+if "$BINDIR/dropbearkey" -y -f "$KEY" | grep "^ssh-" > "$PUBKEY_OUT"; then
     FINGERPRINT=$("$BINDIR/dropbearkey" -y -f "$KEY" | grep Fingerprint | awk '{print $2}')
     eips_print "Saved: $FINGERPRINT"
     cat "$PUBKEY_OUT"
