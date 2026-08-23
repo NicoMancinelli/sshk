@@ -1,3 +1,4 @@
+#!/bin/sh
 # Container-side build script: compiles a static dropbearmulti for Kindle.
 # Runs INSIDE the container built from build/Dockerfile (see build-dropbear.sh).
 #
