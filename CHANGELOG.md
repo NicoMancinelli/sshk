@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+- **Security**: `authorize-server.sh` no longer falls back to uploading the Kindle's *private* key to the remote server when no `.pub` file is found. It now extracts the public half locally with `ssh-keygen -y` first
+- CI: resolved all ShellCheck failures (`SC2034`, `SC2181`, `SC2317`) so the pipeline passes on `main`
+
+### Added
+- `LICENSE` (MIT) for the project
+- `DROPBEAR-LICENSE` — verbatim license notices for the bundled Dropbear 2020.81 binary, now also shipped in release zips
+
 ## [1.1] - 2026-08-18
 
 ### Added

@@ -140,5 +140,11 @@ listkeys.sh
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to build, test, and contribute
 - [CHANGELOG.md](CHANGELOG.md) — Release history
 
+## License
+
+`sshk` is released under the [MIT License](LICENSE). The bundled `dropbearmulti`
+binary is Dropbear 2020.81; its license and third-party notices are provided in
+[DROPBEAR-LICENSE](DROPBEAR-LICENSE).
+
 ---
 *Based on the guides and resources compiled in [kindle-ssh-guide](https://github.com/Mounstroya/kindle-ssh-guide).*
