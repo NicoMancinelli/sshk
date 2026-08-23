@@ -12,6 +12,21 @@ To develop and test `sshk`, you will need:
 ## Cross-Compiling Dropbear
 `dropbearmulti` must be statically compiled to run on the Kindle without library conflicts.
 
+### Recommended: reproducible Docker build
+The pinned toolchain (musl + ARM cross-gcc + QEMU smoke test) lives in `build/`:
+
+```bash
+build/build-dropbear.sh              # builds the release pinned in extensions/sshk/DROPBEAR_VERSION
+build/build-dropbear.sh 2024.86     # or any specific upstream release
+```
+
+The artifact is written to `out/dropbearmulti` (with a sha256 and BUILD-INFO).
+To ship it: copy over `extensions/sshk/bin/dropbearmulti`, bump
+`extensions/sshk/DROPBEAR_VERSION` if you changed releases, and commit both.
+CI also exposes this pipeline as a manual **Docker Build (dropbearmulti)**
+workflow that uploads the binary as an artifact.
+
+### Manual build (legacy)
 1.  **Toolchain**: You need an ARM cross-compiler. The official Kindle toolchain (`arm-kindle-linux-gnueabi`) or a `musl-cross` toolchain for ARM soft-float/hard-float depending on the target Kindle architecture is required.
 2.  **Configure Flags**: When configuring the Dropbear source, use the following flags to ensure a static build suitable for the Kindle:
     ```bash

@@ -1,0 +1,40 @@
+name: Docker Build (dropbearmulti)
+
+# Manual, on-demand validation of the reproducible cross-compile pipeline.
+# Run this after touching build/ or bumping extensions/sshk/DROPBEAR_VERSION;
+# it produces the compiled binary as a workflow artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dropbear_version:
+        description: 'Dropbear release to build (blank = pinned version)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build builder image
+        run: docker build -t sshk-dropbear-builder build/
+
+      - name: Compile dropbearmulti
+        env:
+          DROPBEAR_VERSION: ${{ github.event.inputs.dropbear_version }}
+        run: |
+          VER="${DROPBEAR_VERSION:-$(cat extensions/sshk/DROPBEAR_VERSION)}"
+          mkdir -p out
+          docker run --rm -v "$PWD/out:/out" sshk-dropbear-builder "$VER" /out
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dropbearmulti
+          path: |
+            out/dropbearmulti
+            out/BUILD-INFO.txt
+            out/dropbearmulti.sha256
