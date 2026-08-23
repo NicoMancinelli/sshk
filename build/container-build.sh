@@ -21,7 +21,10 @@ tar -xjf "$WORK/dropbear.tar.bz2" -C "$WORK"
 
 echo "==> bootstrapping musl cross toolchain ($MUSL_VER, arm-linux-musleabi)"
 cd "$WORK/musl-$MUSL_VER"
-CC=arm-linux-gnueabi-gcc ./configure \
+CC=arm-linux-gnueabi-gcc \
+AR=arm-linux-gnueabi-ar \
+RANLIB=arm-linux-gnueabi-ranlib \
+./configure \
     --target=arm-linux-musleabi \
     --prefix="$PREFIX"
 make -j"$(nproc)" >/dev/null
