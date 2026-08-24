@@ -30,10 +30,25 @@ RANLIB=arm-linux-gnueabi-ranlib \
 make -j"$(nproc)" > "$WORK/musl-build.log" 2>&1 || { tail -n 40 "$WORK/musl-build.log" >&2; exit 1; }
 make install > "$WORK/musl-install.log" 2>&1 || { tail -n 40 "$WORK/musl-install.log" >&2; exit 1; }
 
-echo "==> musl install layout:"
-# shellcheck disable=SC2012  # debug listing of known-safe paths
-ls -la "$PREFIX/bin" 2>&1 | head -10
-find "$PREFIX" -maxdepth 3 -name 'musl-gcc*' -o -maxdepth 3 -name '*.specs' 2>/dev/null
+echo "==> where did musl install go?"
+grep -m3 'opt/musl-arm' "$WORK/musl-install.log" || echo "(no /opt/musl-arm paths found in install log)"
+
+# Some cross configurations skip musl's tool-wrapper installation; both
+# artifacts are deterministic templates, so regenerate them if missing.
+if [ ! -f "$PREFIX/lib/musl-gcc.specs" ]; then
+    mkdir -p "$PREFIX/lib"
+    sh "$WORK/musl-$MUSL_VER/tools/musl-gcc.specs.sh" \
+        "$PREFIX/include" "$PREFIX/lib" "/lib/ld-musl-arm.so.1" \
+        > "$PREFIX/lib/musl-gcc.specs"
+    echo "==> regenerated missing musl-gcc.specs"
+fi
+if [ ! -x "$PREFIX/bin/musl-gcc" ]; then
+    mkdir -p "$PREFIX/bin"
+    printf '#!/bin/sh\nexec "${REALGCC:-arm-linux-gnueabi-gcc}" "$@" -specs "%s/lib/musl-gcc.specs"\n' "$PREFIX" \
+        > "$PREFIX/bin/musl-gcc"
+    chmod +x "$PREFIX/bin/musl-gcc"
+    echo "==> regenerated missing musl-gcc wrapper"
+fi
 
 echo "==> sanity check: musl-gcc must produce a runnable static ARM binary"
 printf 'int main(void){return 42;}\n' > "$WORK/probe.c"
