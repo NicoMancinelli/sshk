@@ -146,6 +146,13 @@ if ! ./configure \
     exit 1
 fi
 
+echo "==> compiling objects"
+# Explicit AR/RANLIB: without them the bundled libtom sub-makes silently
+# produce no archive under this toolchain.
+arm-linux-gnueabi-ar rcs "$PREFIX/lib/libcrypt.a"
+make -j"$(nproc)" MULTI=1 STATIC=1 PROGRAMS="dbclient dropbear dropbearkey scp" \
+    AR="arm-linux-gnueabi-ar" RANLIB="arm-linux-gnueabi-ranlib"
+
 echo "==> explicit static final link via ld"
 # Debian's cross-gcc injects hardening (-Wl,-pie etc.) that downgrades -static
 # to a dynamic PIE regardless of driver flags. Drive ld directly with every
