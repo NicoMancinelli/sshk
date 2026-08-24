@@ -139,7 +139,7 @@ if ! ./configure \
     --disable-lastlog \
     --disable-wtmp \
     --disable-wtmpx \
-    CFLAGS="-Os -fno-PIE -ffunction-sections -fdata-sections -DDROPBEAR_SVR_PASSWORD_AUTH=0" \
+    CFLAGS="-Os -fno-PIE -march=armv5t -ffunction-sections -fdata-sections -DDROPBEAR_SVR_PASSWORD_AUTH=0" \
     LDFLAGS="-no-pie -Wl,--gc-sections"; then
     echo "dropbear configure FAILED; config.log tail:" >&2
     tail -n 80 config.log >&2
@@ -210,6 +210,7 @@ rm -f /tmp/smoke_key
     echo "dropbear version : $VER"
     echo "musl version     : $MUSL_VER"
     echo "zlib version     : $ZLIB_VER (static)"
+    echo "cpu arch         : ARMv5T soft-float (runs on every 32-bit ARM Kindle)"
     echo "float ABI        : soft-float (musleabi) for broad Kindle support"
     echo "programs         : dbclient dropbear dropbearkey scp"
     echo "note             : inbound server PASSWORD auth disabled (musl >= 1.2.5"
