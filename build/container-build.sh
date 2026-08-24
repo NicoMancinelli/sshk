@@ -135,12 +135,21 @@ arm-linux-gnueabi-ar rcs "$PREFIX/lib/libcrypt.a"
 make -j"$(nproc)" MULTI=1 STATIC=1 PROGRAMS="dbclient dropbear dropbearkey scp" \
     AR="arm-linux-gnueabi-ar" RANLIB="arm-linux-gnueabi-ranlib"
 
-arm-linux-gnueabi-strip src/dropbearmulti
-cp src/dropbearmulti "$OUT/dropbearmulti"
+# Binary lands at the source root (2020.x) or under src/ depending on release
+if [ -f dropbearmulti ]; then
+    DBMULTI="dropbearmulti"
+elif [ -f src/dropbearmulti ]; then
+    DBMULTI="src/dropbearmulti"
+else
+    echo "compiled dropbearmulti not found in expected locations" >&2
+    exit 1
+fi
+arm-linux-gnueabi-strip "$DBMULTI"
+cp "$DBMULTI" "$OUT/dropbearmulti"
 
 echo "==> smoke test under qemu-user (executes the ARM binary end to end)"
 rm -f /tmp/smoke_key
-qemu-arm-static "$OUT/dropbearmulti" dropbearkey -t ed25519 -f /tmp/smoke_key >/dev/null
+qemu-arm-static "$OUT/dropbearmulti" dropbearkey -t ed25519 -f /tmp/smoke_key > "$WORK/smoke.log" 2>&1 || { cat "$WORK/smoke.log" >&2; exit 1; }
 test -s /tmp/smoke_key
 rm -f /tmp/smoke_key
 
