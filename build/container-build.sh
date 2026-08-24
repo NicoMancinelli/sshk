@@ -27,12 +27,27 @@ RANLIB=arm-linux-gnueabi-ranlib \
 ./configure \
     --target=arm-linux-musleabi \
     --prefix="$PREFIX"
-make -j"$(nproc)" >/dev/null
-make install >/dev/null
+make -j"$(nproc)" > "$WORK/musl-build.log" 2>&1 || { tail -n 40 "$WORK/musl-build.log" >&2; exit 1; }
+make install > "$WORK/musl-install.log" 2>&1 || { tail -n 40 "$WORK/musl-install.log" >&2; exit 1; }
 
-echo "==> configuring Dropbear $VER (static, bundled libtom)"
+echo "==> musl install layout:"
+# shellcheck disable=SC2012  # debug listing of known-safe paths
+ls -la "$PREFIX/bin" 2>&1 | head -10
+find "$PREFIX" -maxdepth 3 -name 'musl-gcc*' -o -maxdepth 3 -name '*.specs' 2>/dev/null
+
+echo "==> sanity check: musl-gcc must produce a runnable static ARM binary"
+printf 'int main(void){return 42;}\n' > "$WORK/probe.c"
+if ! "$PREFIX/bin/musl-gcc" -static -fno-PIE -no-pie "$WORK/probe.c" -o "$WORK/probe" 2> "$WORK/probe.err"; then
+    echo "musl-gcc probe FAILED:" >&2
+    cat "$WORK/probe.err" >&2
+    exit 1
+fi
+# probe returns 42; qemu propagates the code (guarded so set -e survives it)
+[ "$(qemu-arm-static "$WORK/probe" >/dev/null 2>&1; echo $?)" = "42" ]
+
 cd "$WORK/dropbear-$VER"
-./configure \
+echo "==> configuring Dropbear $VER (static, bundled libtom)"
+if ! ./configure \
     CC="$PREFIX/bin/musl-gcc" \
     --host=arm-linux-musleabi \
     --enable-bundled-libtom \
@@ -40,8 +55,12 @@ cd "$WORK/dropbear-$VER"
     --disable-lastlog \
     --disable-wtmp \
     --disable-wtmpx \
-    CFLAGS="-Os -ffunction-sections -fdata-sections" \
-    LDFLAGS="-Wl,--gc-sections"
+    CFLAGS="-Os -fno-PIE -ffunction-sections -fdata-sections" \
+    LDFLAGS="-no-pie -Wl,--gc-sections"; then
+    echo "dropbear configure FAILED; config.log tail:" >&2
+    tail -n 80 config.log >&2
+    exit 1
+fi
 
 echo "==> building multi-call binary (dbclient, dropbear, dropbearkey, scp)"
 make -j"$(nproc)" MULTI=1 STATIC=1 PROGRAMS="dbclient dropbear dropbearkey scp"
