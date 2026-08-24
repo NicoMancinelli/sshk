@@ -44,8 +44,11 @@ if [ -z "$WIFI_IP" ]; then
 fi
 
 # Start dropbear server
-# -p: port, -r: hostkey, -B: allow empty password (or uses system auth), -E: log to stderr
-"$BINDIR/dropbearmulti" dropbear -p "$PORT" -r "$HOST_KEY" -B > /tmp/dropbear.log 2>&1 &
+# -p: port, -r: hostkey, -E: log to stderr
+# NOTE: deliberately NO -B (blank-password logins). Kindle root accounts often
+# have no password; inbound access is public-key only via
+# extensions/sshk/.ssh/authorized_keys (see authorize-server.sh).
+"$BINDIR/dropbearmulti" dropbear -p "$PORT" -r "$HOST_KEY" > /tmp/dropbear.log 2>&1 &
 SERVER_PID=$!
 
 echo "$SERVER_PID" > "$PIDFILE"
