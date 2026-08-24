@@ -9,11 +9,12 @@ VER="${1:?usage: container-build.sh <dropbear-version> <out-dir>}"
 OUT="${2:?usage: container-build.sh <dropbear-version> <out-dir>}"
 
 MUSL_VER="1.2.5"
+ZLIB_VER="1.3.1"
 WORK="/tmp/build"
 PREFIX="/opt/musl-arm"
 mkdir -p "$WORK" "$OUT"
 
-echo "==> fetching musl $MUSL_VER and Dropbear $VER"
+echo "==> fetching musl $MUSL_VER, zlib $ZLIB_VER and Dropbear $VER"
 
 # fetch OUT_FILE URL_PRIMARY [URL_FALLBACK...] — 3 tries per URL
 fetch() {
@@ -39,7 +40,11 @@ fetch "$WORK/musl.tar.gz" \
 fetch "$WORK/dropbear.tar.bz2" \
     "https://matt.ucc.asn.au/dropbear/releases/dropbear-${VER}.tar.bz2" \
     "https://github.com/mkj/dropbear/archive/refs/tags/DROPBEAR_${VER}.tar.gz"
+fetch "$WORK/zlib.tar.gz" \
+    "https://zlib.net/zlib-${ZLIB_VER}.tar.gz" \
+    "https://github.com/madler/zlib/releases/download/v${ZLIB_VER}/zlib-${ZLIB_VER}.tar.gz"
 tar -xzf "$WORK/musl.tar.gz" -C "$WORK"
+tar -xzf "$WORK/zlib.tar.gz" -C "$WORK"
 # GNU tar sniffs compression; GitHub's fallback tag archive differs in name+format
 tar -xf "$WORK/dropbear.tar.bz2" -C "$WORK"
 if [ ! -d "$WORK/dropbear-$VER" ] && [ -d "$WORK/dropbear-DROPBEAR_$VER" ]; then
@@ -77,6 +82,15 @@ if [ ! -x "$PREFIX/bin/musl-gcc" ]; then
     echo "==> regenerated missing musl-gcc wrapper"
 fi
 
+echo "==> building zlib $ZLIB_VER (static, for SSH compression)"
+cd "$WORK/zlib-$ZLIB_VER"
+CC="$PREFIX/bin/musl-gcc" \
+AR="arm-linux-gnueabi-ar" \
+RANLIB="arm-linux-gnueabi-ranlib" \
+./configure --static --prefix="$PREFIX" > "$WORK/zlib-config.log" 2>&1 || { tail -n 30 "$WORK/zlib-config.log" >&2; exit 1; }
+make -j"$(nproc)" > "$WORK/zlib-build.log" 2>&1 || { tail -n 30 "$WORK/zlib-build.log" >&2; exit 1; }
+make install > /dev/null 2>&1
+
 echo "==> sanity check: musl-gcc must produce a runnable static ARM binary"
 printf 'int main(void){return 42;}\n' > "$WORK/probe.c"
 if ! "$PREFIX/bin/musl-gcc" -static -fno-PIE -no-pie "$WORK/probe.c" -o "$WORK/probe" 2> "$WORK/probe.err"; then
@@ -96,7 +110,7 @@ if [ "$QEMU_RC" != "42" ]; then
 fi
 
 cd "$WORK/dropbear-$VER"
-echo "==> configuring Dropbear $VER (static, bundled libtom)"
+echo "==> configuring Dropbear $VER (static, bundled libtom, system zlib)"
 if ! ./configure \
     CC="$PREFIX/bin/musl-gcc" \
     --host=arm-linux-musleabi \
@@ -127,6 +141,7 @@ rm -f /tmp/smoke_key
 {
     echo "dropbear version : $VER"
     echo "musl version     : $MUSL_VER"
+    echo "zlib version     : $ZLIB_VER (static)"
     echo "float ABI        : soft-float (musleabi) for broad Kindle support"
     echo "programs         : dbclient dropbear dropbearkey scp"
 } > "$OUT/BUILD-INFO.txt"
