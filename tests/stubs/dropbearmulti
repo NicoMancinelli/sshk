@@ -16,7 +16,9 @@ if [ "$is_keygen" = "1" ]; then
     prev=""
     for a in "$@"; do
         if [ "$prev" = "-f" ] && [ -n "$a" ]; then
-            : > "$a"
+            printf '%s\n'                 "-----BEGIN OPENSSH PRIVATE KEY-----" \
+                "fake-key-material-for-tests" \
+                "-----END OPENSSH PRIVATE KEY-----" > "$a"
         fi
         prev="$a"
     done

@@ -7,7 +7,8 @@ eips_print() {
     eips 0 0 "sshk: $1"
 }
 
-KTERM_SH="/mnt/us/extensions/kterm/bin/kterm.sh"
+US_ROOT="${SSHK_US_ROOT:-/mnt/us}"
+KTERM_SH="$US_ROOT/extensions/kterm/bin/kterm.sh"
 
 eips_print "Uninstalling SSH from kterm..."
 

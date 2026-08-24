@@ -8,13 +8,14 @@ eips_print() {
 }
 
 BINDIR="$(cd "$(dirname "$0")" && pwd)"
+US_ROOT="${SSHK_US_ROOT:-/mnt/us}"
 KEYNAME="${1:-native}"
 KEY="$BINDIR/kindle_${KEYNAME}_key"
 
 if [ "$KEYNAME" = "native" ]; then
-    PUBKEY_OUT="/mnt/us/kindle_ssh_key.pub"
+    PUBKEY_OUT="$US_ROOT/kindle_ssh_key.pub"
 else
-    PUBKEY_OUT="/mnt/us/kindle_${KEYNAME}_ssh_key.pub"
+    PUBKEY_OUT="$US_ROOT/kindle_${KEYNAME}_ssh_key.pub"
 fi
 
 if [ ! -f "$KEY" ]; then
