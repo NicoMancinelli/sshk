@@ -24,8 +24,12 @@ $ readelf -A extensions/sshk/bin/dropbearmulti | grep -E 'Tag_CPU_arch|VFP'
     userland to date).
 *   **Fully static** means no dependency on the device's libc version.
 
-Amazon's post-2020 devices (Paperwhite 5, Scribe, the 2022/2024 basic Kindles)
-continue to run 32-bit ARM userland, so the same single binary applies.
+Amazon's post-2020 devices are MediaTek ("MTK") boards running **32-bit ARM
+userland with a hard-float rootfs** — this is why KOReader ships separate
+dynamically-linked `kindlehf` builds for them. A *statically linked*
+soft-float binary sidesteps that entirely: it matches no rootfs ABI because it
+never loads one. The same single binary therefore applies across every
+generation.
 
 The reproducible rebuild pipeline (`build/build-dropbear.sh`) preserves these
 properties: it targets `arm-linux-musleabi` (musl defaults to ARMv5T,
@@ -34,14 +38,20 @@ artifact that is not statically linked.
 
 ## Device matrix
 
+Device families and generations follow the community device definitions
+maintained by
+[KOReader](https://github.com/koreader/koreader/blob/master/frontend/device/kindle/device.lua).
+
 | Device | Generation | Year | Userland | Jailbreak route | sshk status |
 | --- | --- | --- | --- | --- | --- |
-| Kindle (basic) | 11th gen | 2022 | 32-bit ARM | LanguageBreak ≤ 5.16.2.x / WatchThis-era methods | Binary-compatible ✅ · on-device test pending ⏳ |
-| Kindle (basic) | 12th gen | 2024 | 32-bit ARM | see MobileRead exploit tracker | Binary-compatible ✅ · on-device test pending ⏳ |
-| Kindle Paperwhite 5 / Signature Ed. | 11th gen | 2021 | 32-bit ARM | LanguageBreak ≤ 5.16.2.x | Binary-compatible ✅ · on-device test pending ⏳ |
-| Kindle Scribe | 1st gen | 2022 | 32-bit ARM | LanguageBreak ≤ 5.16.2.x | Binary-compatible ✅ · on-device test pending ⏳ |
-| Kindle Scribe | 2nd gen | 2024 | 32-bit ARM | see MobileRead exploit tracker | Binary-compatible ✅ · on-device test pending ⏳ |
-| Pre-2020 Kindles (KPW4, Oasis 2/3, Kindle 10th gen, …) | various | ≤ 2019 | 32-bit ARM (soft-float capable) | existing jailbreaks (MRPI/KUAL era) | Works — this was the original target ✅ |
+| Kindle Paperwhite 5 / Signature Ed. | 11th gen | 2021 | 32-bit ARM (MTK) | LanguageBreak ≤ 5.16.2.x | Binary-compatible ✅ · on-device pending ⏳ ([#6](https://github.com/NicoMancinelli/sshk/issues/6)) |
+| Kindle Paperwhite 6 | 12th gen | 2024 | 32-bit ARM (MTK) | see MobileRead exploit tracker | Binary-compatible ✅ · on-device pending ⏳ |
+| Kindle (basic) | 11th gen | 2022 | 32-bit ARM (MTK) | LanguageBreak ≤ 5.16.2.x | Binary-compatible ✅ · on-device pending ⏳ ([#8](https://github.com/NicoMancinelli/sshk/issues/8)) |
+| Kindle (basic) | 12th gen | 2024 | 32-bit ARM (MTK) | see MobileRead exploit tracker | Binary-compatible ✅ · on-device pending ⏳ ([#9](https://github.com/NicoMancinelli/sshk/issues/9)) |
+| Kindle Scribe | 1st gen | 2022 | 32-bit ARM (MTK) | LanguageBreak ≤ 5.16.2.x | Binary-compatible ✅ · on-device pending ⏳ ([#7](https://github.com/NicoMancinelli/sshk/issues/7)) |
+| Kindle Scribe 3 | 3rd gen | 2024 | 32-bit ARM (MTK) | see MobileRead exploit tracker | Binary-compatible ✅ · on-device pending ⏳ |
+| Kindle Colorsoft | 1st gen | 2024 | 32-bit ARM (MTK) | see MobileRead exploit tracker | Binary-compatible ✅ · on-device pending ⏳ |
+| Pre-2020 Kindles (KPW4, Oasis 2/3, Kindle 10th gen, …) | various | ≤ 2019 | 32-bit ARM (i.MX) | existing jailbreaks (MRPI/KUAL era) | Works — this was the original target ✅ |
 
 Legend: ✅ = supported by design/evidence · ⏳ = expected to work, needs a
 confirmed on-device report.
