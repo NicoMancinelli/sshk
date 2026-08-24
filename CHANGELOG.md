@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3] - 2026-08-24
+
+### Added
+- Kindle environment simulator (`tests/kindle-sim/run-sim.sh`): all 9 KUAL menu actions executed end-to-end in CI, real ARM binary under qemu-user emulation including a live inbound-server banner probe on port 2222
+
+### Fixed
+- `server-start.sh`: "already running?" detection no longer relies on a stale pidfile PID (Dropbear double-forks); falls back to pgrep on our port
+- `install.sh`/`showkey.sh`/`genkey.sh`/`uninstall.sh`/`kterm-landscape.sh`: USB-root paths honor `SSHK_US_ROOT` override; extension-relative paths derive from script location instead of hardcoding `/mnt/us`
+
 ## [1.2] - 2026-08-24
 
 ### Security
