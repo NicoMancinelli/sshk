@@ -51,10 +51,27 @@ if [ -f "$KTERM_SH" ]; then
         cp "$KTERM_SH" "${KTERM_SH}.orig"
     fi
     if ! grep -q "extensions/sshk/bin" "$KTERM_SH"; then
-        sed -i 's|#!/bin/sh|#!/bin/sh\nexport PATH=/mnt/us/extensions/sshk/bin:$PATH|' "$KTERM_SH"
+        # Prepend a PATH export below the shebang without depending on the
+        # first line's exact contents; write through the same file so the
+        # exec bit and ownership survive.
+        TMPF="${KTERM_SH}.patch.$$"
+        {
+            echo '#!/bin/sh'
+            echo 'export PATH=/mnt/us/extensions/sshk/bin:$PATH'
+            tail -n +2 "$KTERM_SH"
+        } > "$TMPF"
+        cat "$TMPF" > "$KTERM_SH"
+        rm -f "$TMPF"
     fi
-    echo "[2/4] kterm PATH configured."
-    eips_print_row 5 "[OK] kterm PATH configured"
+    # Verify the patch actually landed — never claim success on a silent no-op
+    if grep -q "export PATH=/mnt/us/extensions/sshk/bin" "$KTERM_SH"; then
+        echo "[2/4] kterm PATH configured."
+        eips_print_row 5 "[OK] kterm PATH configured"
+    else
+        echo "[2/4] WARNING: could not patch $KTERM_SH automatically."
+        echo "       Add this line to it manually: export PATH=/mnt/us/extensions/sshk/bin:\$PATH"
+        eips_print_row 5 "[!!] kterm patch failed (see log)"
+    fi
 else
     echo "[2/4] Note: kterm not yet installed."
     eips_print_row 5 "[--] kterm not found (install kterm)"
