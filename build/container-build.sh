@@ -65,15 +65,35 @@ make install > "$WORK/musl-install.log" 2>&1 || { tail -n 40 "$WORK/musl-install
 echo "==> where did musl install go?"
 grep -m3 'opt/musl-arm' "$WORK/musl-install.log" || echo "(no /opt/musl-arm paths found in install log)"
 
-# Some cross configurations skip musl's tool-wrapper installation; both
-# artifacts are deterministic templates, so regenerate them if missing.
-if [ ! -f "$PREFIX/lib/musl-gcc.specs" ]; then
-    mkdir -p "$PREFIX/lib"
-    sh "$WORK/musl-$MUSL_VER/tools/musl-gcc.specs.sh" \
-        "$PREFIX/include" "$PREFIX/lib" "/lib/ld-musl-arm.so.1" \
-        > "$PREFIX/lib/musl-gcc.specs"
-    echo "==> regenerated missing musl-gcc.specs"
-fi
+# Some cross configurations skip musl's tool-wrapper installation; regenerate
+# both artifacts ourselves. Our specs deliberately NEVER emit a dynamic linker
+# (Debian's hardening injects -Wl,-pie which otherwise downgrades -static to a
+# dynamic PIE needing /lib/ld-musl-arm.so.1 at runtime — absent on Kindles).
+mkdir -p "$PREFIX/lib"
+cat > "$PREFIX/lib/musl-gcc.specs" <<SPECSEOF
+%rename cpp_options old_cpp_options
+
+*cpp_options:
+-nostdinc -isystem $PREFIX/include %(old_cpp_options)
+
+*cc1:
+%(cc1_cpu) -nostdinc -isystem $PREFIX/include
+
+*link_libgcc:
+-L$PREFIX/lib
+
+*libgcc:
+libgcc.a%s %:if-exists(libgcc_eh.a%s)
+
+*startfile:
+%{!shared: $PREFIX/lib/crt1.o} $PREFIX/lib/crti.o crtbeginS.o%s
+
+*endfile:
+crtendS.o%s $PREFIX/lib/crtn.o
+
+*link:
+-nostdlib -static %{shared:-shared} %{rdynamic:-export-dynamic}
+SPECSEOF
 if [ ! -x "$PREFIX/bin/musl-gcc" ]; then
     mkdir -p "$PREFIX/bin"
     printf '#!/bin/sh\nexec "${REALGCC:-arm-linux-gnueabi-gcc}" "$@" -specs "%s/lib/musl-gcc.specs"\n' "$PREFIX" \
@@ -146,6 +166,15 @@ else
 fi
 arm-linux-gnueabi-strip "$DBMULTI"
 cp "$DBMULTI" "$OUT/dropbearmulti"
+
+echo "==> verifying the artifact is fully static (hard requirement for Kindles)"
+file "$OUT/dropbearmulti"
+if file "$OUT/dropbearmulti" | grep -q 'statically linked'; then
+    echo "==> OK: statically linked"
+else
+    echo "FATAL: artifact is not statically linked — it would not run on a Kindle" >&2
+    exit 1
+fi
 
 echo "==> smoke test under qemu-user (executes the ARM binary end to end)"
 rm -f /tmp/smoke_key
