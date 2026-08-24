@@ -6,7 +6,7 @@ EXTDIR="$(cd "$BINDIR/.." && pwd)"
 # USB root; overridable for simulation (tests/kindle-sim). Production default.
 US_ROOT="${SSHK_US_ROOT:-/mnt/us}"
 KTERM_SH="$US_ROOT/extensions/kterm/bin/kterm.sh"
-VERSION=$(cat "$EXTDIR/VERSION" 2>/dev/null || echo "1.2")
+VERSION=$(cat "$EXTDIR/VERSION" 2>/dev/null || echo "1.3")
 
 eips_print_row() {
     ROW="$1"
