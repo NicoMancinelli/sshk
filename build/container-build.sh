@@ -127,7 +127,13 @@ if ! ./configure \
 fi
 
 echo "==> building multi-call binary (dbclient, dropbear, dropbearkey, scp)"
-make -j"$(nproc)" MULTI=1 STATIC=1 PROGRAMS="dbclient dropbear dropbearkey scp"
+# Explicit AR/RANLIB: without them the bundled libtom sub-makes silently
+# produce no archive under this toolchain.
+# Stub libcrypt.a: musl ships crypt() inside libc.a, but Dropbear's link
+# line asks for -lcrypt explicitly.
+arm-linux-gnueabi-ar rcs "$PREFIX/lib/libcrypt.a"
+make -j"$(nproc)" MULTI=1 STATIC=1 PROGRAMS="dbclient dropbear dropbearkey scp" \
+    AR="arm-linux-gnueabi-ar" RANLIB="arm-linux-gnueabi-ranlib"
 
 arm-linux-gnueabi-strip src/dropbearmulti
 cp src/dropbearmulti "$OUT/dropbearmulti"
