@@ -3,7 +3,9 @@
 
 BINDIR="$(cd "$(dirname "$0")" && pwd)"
 EXTDIR="$(cd "$BINDIR/.." && pwd)"
-KTERM_SH="/mnt/us/extensions/kterm/bin/kterm.sh"
+# USB root; overridable for simulation (tests/kindle-sim). Production default.
+US_ROOT="${SSHK_US_ROOT:-/mnt/us}"
+KTERM_SH="$US_ROOT/extensions/kterm/bin/kterm.sh"
 VERSION=$(cat "$EXTDIR/VERSION" 2>/dev/null || echo "1.2")
 
 eips_print_row() {
@@ -78,7 +80,7 @@ else
 fi
 
 # Step 3: Configure persistent known_hosts
-SSH_DIR="/mnt/us/extensions/sshk/.ssh"
+SSH_DIR="$EXTDIR/.ssh"
 mkdir -p "$SSH_DIR"
 if [ ! -L "/root/.ssh" ]; then
     if command -v mntroot >/dev/null 2>&1; then

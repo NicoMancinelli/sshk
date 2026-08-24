@@ -8,6 +8,7 @@ eips_print() {
 }
 
 BINDIR="$(cd "$(dirname "$0")" && pwd)"
+US_ROOT="${SSHK_US_ROOT:-/mnt/us}"
 KEYNAME="${1:-native}"
 KEY="$BINDIR/kindle_${KEYNAME}_key"
 
@@ -25,5 +26,5 @@ if "$BINDIR/dropbearkey" -t ed25519 -f "$KEY" > /tmp/genkey.out 2>&1; then
     "$BINDIR/showkey.sh" "$KEYNAME"
 else
     eips_print "Failed to generate key! Check log."
-    cat /tmp/genkey.out > /mnt/us/sshk_error.log
+    cat /tmp/genkey.out > "$US_ROOT/sshk_error.log"
 fi

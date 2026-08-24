@@ -101,3 +101,9 @@ jobs:
           file "$BIN" | grep -q 'statically linked' \
             || { echo "FAIL: binary must be statically linked"; exit 1; }
           echo "✓ dropbearmulti is static ARMv5 soft-float — portable to all Kindles"
+
+      - name: Kindle simulation (menu scripts end-to-end, ARM under qemu)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user-static >/dev/null
+          ./tests/kindle-sim/run-sim.sh
