@@ -14,10 +14,37 @@ PREFIX="/opt/musl-arm"
 mkdir -p "$WORK" "$OUT"
 
 echo "==> fetching musl $MUSL_VER and Dropbear $VER"
-curl -fsSL -o "$WORK/musl.tar.gz" "https://musl.libc.org/releases/musl-${MUSL_VER}.tar.gz"
-curl -fsSL -o "$WORK/dropbear.tar.bz2" "https://matt.ucc.asn.au/dropbear/releases/dropbear-${VER}.tar.bz2"
+
+# fetch OUT_FILE URL_PRIMARY [URL_FALLBACK...] — 3 tries per URL
+fetch() {
+    _out="$1"; shift
+    for _url in "$@"; do
+        _try=1
+        while [ "$_try" -le 3 ]; do
+            echo "    GET $_url (attempt $_try)"
+            if curl -fsSL --retry 2 --retry-delay 3 -o "$_out" "$_url"; then
+                return 0
+            fi
+            _try=$((_try + 1))
+            sleep 5
+        done
+    done
+    echo "all mirrors failed for $_out" >&2
+    return 1
+}
+
+fetch "$WORK/musl.tar.gz" \
+    "https://musl.libc.org/releases/musl-${MUSL_VER}.tar.gz" \
+    "https://git.musl-libc.org/cgit/musl/snapshot/musl-${MUSL_VER}.tar.gz"
+fetch "$WORK/dropbear.tar.bz2" \
+    "https://matt.ucc.asn.au/dropbear/releases/dropbear-${VER}.tar.bz2" \
+    "https://github.com/mkj/dropbear/archive/refs/tags/DROPBEAR_${VER}.tar.gz"
 tar -xzf "$WORK/musl.tar.gz" -C "$WORK"
-tar -xjf "$WORK/dropbear.tar.bz2" -C "$WORK"
+# GNU tar sniffs compression; GitHub's fallback tag archive differs in name+format
+tar -xf "$WORK/dropbear.tar.bz2" -C "$WORK"
+if [ ! -d "$WORK/dropbear-$VER" ] && [ -d "$WORK/dropbear-DROPBEAR_$VER" ]; then
+    mv "$WORK/dropbear-DROPBEAR_$VER" "$WORK/dropbear-$VER"
+fi
 
 echo "==> bootstrapping musl cross toolchain ($MUSL_VER, arm-linux-musleabi)"
 cd "$WORK/musl-$MUSL_VER"
