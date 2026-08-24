@@ -4,14 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.2] - 2026-08-24
 
 ### Security
 - **Inbound server**: `server-start.sh` no longer passes Dropbear's `-B` (blank-password logins). Kindle root accounts often have no password; inbound access is now strictly public-key based (`authorize-server.sh`). Rebuilt binaries additionally compile password auth out entirely.
 
 ### Added
-- `SUPPORTED-DEVICES.md`: device matrix covering post-2020 Kindles (PW5 2021, basic 2022/2024, Scribe 2022/2024) with architecture rationale and confirmation tracker issues
+- `SUPPORTED-DEVICES.md`: device matrix covering post-2020 Kindles — Paperwhite 5/6, basic 2022/2024, Scribe 1/3, Colorsoft — with architecture rationale (static soft-float vs hard-float rootfs) and confirmation tracker issues
 - CI: binary portability gate (static ARMv5 soft-float ELF attributes) and KUAL manifest cross-reference check (every `menu.json` action must exist and be executable)
+
+### Fixed
+- `install.sh` no longer reports success when the kterm PATH patch silently fails; the patch now works with any shebang, preserves file permissions, and is verified before claiming success
 
 ### Changed
 - Build pipeline pins `-march=armv5t` explicitly for maximum device compatibility
