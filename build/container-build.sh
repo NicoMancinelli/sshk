@@ -146,40 +146,41 @@ if ! ./configure \
     exit 1
 fi
 
-echo "==> building multi-call binary (dbclient, dropbear, dropbearkey, scp)"
-# Explicit AR/RANLIB: without them the bundled libtom sub-makes silently
-# produce no archive under this toolchain.
-# Stub libcrypt.a: musl ships crypt() inside libc.a, but Dropbear's link
-# line asks for -lcrypt explicitly.
-arm-linux-gnueabi-ar rcs "$PREFIX/lib/libcrypt.a"
-make -j"$(nproc)" MULTI=1 STATIC=1 PROGRAMS="dbclient dropbear dropbearkey scp" \
-    AR="arm-linux-gnueabi-ar" RANLIB="arm-linux-gnueabi-ranlib"
-
-echo "==> relinking with an explicit static command"
-# Debian's cross-gcc injects -Wl,-pie hardening AFTER user flags, which
-# downgrades -static to a dynamic PIE. Capture make's link command, strip
-# every PIE/hardening token, and relink statically ourselves.
-LINK_CMD="$(make -n MULTI=1 STATIC=1 PROGRAMS="dbclient dropbear dropbearkey scp" \
-    AR="arm-linux-gnueabi-ar" RANLIB="arm-linux-gnueabi-ranlib" 2>/dev/null \
-    | grep "$PREFIX/bin/musl-gcc" | grep -- '-o dropbearmulti' | head -n 1)"
-if [ -z "$LINK_CMD" ]; then
-    echo "could not capture link command for static relink" >&2
+echo "==> explicit static final link via ld"
+# Debian's cross-gcc injects hardening (-Wl,-pie etc.) that downgrades -static
+# to a dynamic PIE regardless of driver flags. Drive ld directly with every
+# component named so nothing can be reinterpreted.
+# shellcheck disable=SC2035  # intentional single-dir glob
+OBJECTS=""
+for f in *.o; do
+    [ -f "$f" ] || continue
+    OBJECTS="$OBJECTS \"$f\""
+done
+if [ -z "${OBJECTS:-}" ]; then
+    echo "no dropbear objects found for manual link" >&2
     exit 1
 fi
-printf '%s\n' "$LINK_CMD" \
-    | sed 's/-Wl,-pie//g; s/[[:space:]]-pie//g; s/-fPIE//g; s/-fpie//g; s/-Wl,-z,now//g; s/-Wl,-z,relro//g; s/$/ -static/' \
-    > "$WORK/relink.sh"
-sh "$WORK/relink.sh" || { echo "static relink failed" >&2; exit 1; }
+LIBGCC_DIR="$(dirname "$(arm-linux-gnueabi-gcc -print-libgcc-file-name)")"
+cat > "$WORK/relink.sh" <<RELINK_EOF
+#!/bin/sh
+set -eu
+cd "$WORK/dropbear-$VER"
+exec arm-linux-gnueabi-ld \\
+    --gc-sections -static \\
+    -o dropbearmulti-static \\
+    $PREFIX/lib/crt1.o $PREFIX/lib/crti.o \\
+    $OBJECTS \\
+    libtomcrypt/libtomcrypt.a libtommath/libtommath.a \\
+    -L$PREFIX/lib -lz \\
+    $PREFIX/lib/libc.a \\
+    --start-group $LIBGCC_DIR/libgcc.a $LIBGCC_DIR/libgcc_eh.a --end-group \\
+    $PREFIX/lib/crtn.o
+RELINK_EOF
+sh "$WORK/relink.sh" || { echo "manual static link failed" >&2; exit 1; }
 
 # Binary lands at the source root (2020.x) or under src/ depending on release
-if [ -f dropbearmulti ]; then
-    DBMULTI="dropbearmulti"
-elif [ -f src/dropbearmulti ]; then
-    DBMULTI="src/dropbearmulti"
-else
-    echo "compiled dropbearmulti not found in expected locations" >&2
-    exit 1
-fi
+DBMULTI="dropbearmulti-static"
+[ -f "$DBMULTI" ] || { echo "static link produced no output" >&2; exit 1; }
 arm-linux-gnueabi-strip "$DBMULTI"
 cp "$DBMULTI" "$OUT/dropbearmulti"
 
