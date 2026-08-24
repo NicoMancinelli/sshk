@@ -4,7 +4,7 @@
 BINDIR="$(cd "$(dirname "$0")" && pwd)"
 EXTDIR="$(cd "$BINDIR/.." && pwd)"
 KTERM_SH="/mnt/us/extensions/kterm/bin/kterm.sh"
-VERSION=$(cat "$EXTDIR/VERSION" 2>/dev/null || echo "1.1.1")
+VERSION=$(cat "$EXTDIR/VERSION" 2>/dev/null || echo "1.2")
 
 eips_print_row() {
     ROW="$1"
