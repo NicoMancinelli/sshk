@@ -12,16 +12,27 @@ eips_print_row() {
     eips 0 "$ROW" "$TEXT"
 }
 
-# Check if already running
+# Check if already running.
+# Dropbear daemonizes (double-fork), so the pidfile PID goes stale immediately
+# after start; fall back to a process-table search for our port.
+RUNNING=0
 if [ -f "$PIDFILE" ]; then
     OLD_PID=$(cat "$PIDFILE" 2>/dev/null)
-    if kill -0 "$OLD_PID" 2>/dev/null; then
-        eips -c 2>/dev/null
-        eips_print_row 2 "SSH Server is already running!"
-        eips_print_row 3 "PID: $OLD_PID (Port $PORT)"
-        exit 0
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        RUNNING=1
+        LIVE_PID="$OLD_PID"
     fi
     rm -f "$PIDFILE"
+fi
+if [ "$RUNNING" -eq 0 ] && command -v pgrep >/dev/null 2>&1; then
+    LIVE_PID=$(pgrep -f "dropbear.*-p $PORT" 2>/dev/null | head -n 1)
+    [ -n "$LIVE_PID" ] && RUNNING=1
+fi
+if [ "$RUNNING" -eq 1 ]; then
+    eips -c 2>/dev/null
+    eips_print_row 2 "SSH Server is already running!"
+    eips_print_row 3 "PID: $LIVE_PID (Port $PORT)"
+    exit 0
 fi
 
 # Ensure host keys exist
