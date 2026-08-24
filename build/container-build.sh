@@ -80,12 +80,20 @@ fi
 echo "==> sanity check: musl-gcc must produce a runnable static ARM binary"
 printf 'int main(void){return 42;}\n' > "$WORK/probe.c"
 if ! "$PREFIX/bin/musl-gcc" -static -fno-PIE -no-pie "$WORK/probe.c" -o "$WORK/probe" 2> "$WORK/probe.err"; then
-    echo "musl-gcc probe FAILED:" >&2
+    echo "musl-gcc probe COMPILE FAILED:" >&2
     cat "$WORK/probe.err" >&2
     exit 1
 fi
-# probe returns 42; qemu propagates the code (guarded so set -e survives it)
-[ "$(qemu-arm-static "$WORK/probe" >/dev/null 2>&1; echo $?)" = "42" ]
+file "$WORK/probe"
+set +e
+qemu-arm-static "$WORK/probe"
+QEMU_RC=$?
+set -e
+echo "==> probe exit code under qemu: $QEMU_RC (want 42)"
+if [ "$QEMU_RC" != "42" ]; then
+    echo "qemu smoke test failed" >&2
+    exit 1
+fi
 
 cd "$WORK/dropbear-$VER"
 echo "==> configuring Dropbear $VER (static, bundled libtom)"
