@@ -136,6 +136,7 @@ listkeys.sh
 
 ## Project Documentation
 
+- [SUPPORTED-DEVICES.md](SUPPORTED-DEVICES.md) — Device matrix: which Kindles work (2021–2024 included) and why
 - [ARCHITECTURE.md](ARCHITECTURE.md) — How the project is structured and why
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to build, test, and contribute
 - [CHANGELOG.md](CHANGELOG.md) — Release history

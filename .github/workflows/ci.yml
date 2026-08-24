@@ -73,3 +73,20 @@ jobs:
       - name: Run Functional Tests (wrapper argv behavior)
         run: |
           ./tests/run-tests.sh
+
+      - name: Verify binary portability (static ARMv5 soft-float)
+        run: |
+          BIN=extensions/sshk/bin/dropbearmulti
+          file "$BIN"
+          readelf -A "$BIN" | tee /tmp/elf-attrs.txt
+          # Every Kindle (2021-2024 included) runs 32-bit ARM userland; an
+          # ARMv5(T/TE) soft-float baseline executes on all of them and on
+          # every older generation too.
+          grep -Eq 'Tag_CPU_arch: v5TE?' /tmp/elf-attrs.txt \
+            || { echo "FAIL: CPU arch must be ARMv5T or v5TE"; exit 1; }
+          if grep -q 'Tag_ABI_VFP_args' /tmp/elf-attrs.txt; then
+            echo "FAIL: binary must stay soft-float ABI"; exit 1
+          fi
+          file "$BIN" | grep -q 'statically linked' \
+            || { echo "FAIL: binary must be statically linked"; exit 1; }
+          echo "✓ dropbearmulti is static ARMv5 soft-float — portable to all Kindles"
