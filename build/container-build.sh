@@ -139,7 +139,7 @@ if ! ./configure \
     --disable-lastlog \
     --disable-wtmp \
     --disable-wtmpx \
-    CFLAGS="-Os -fno-PIE -ffunction-sections -fdata-sections" \
+    CFLAGS="-Os -fno-PIE -ffunction-sections -fdata-sections -DDROPBEAR_SVR_PASSWORD_AUTH=0" \
     LDFLAGS="-no-pie -Wl,--gc-sections"; then
     echo "dropbear configure FAILED; config.log tail:" >&2
     tail -n 80 config.log >&2
@@ -188,6 +188,9 @@ rm -f /tmp/smoke_key
     echo "zlib version     : $ZLIB_VER (static)"
     echo "float ABI        : soft-float (musleabi) for broad Kindle support"
     echo "programs         : dbclient dropbear dropbearkey scp"
+    echo "note             : inbound server PASSWORD auth disabled (musl >= 1.2.5"
+    echo "                     dropped crypt()); public-key auth is unaffected and"
+    echo "                     is the flow sshk documents (authorize-server.sh)"
 } > "$OUT/BUILD-INFO.txt"
 sha256sum "$OUT/dropbearmulti" > "$OUT/dropbearmulti.sha256"
 
