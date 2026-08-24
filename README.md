@@ -12,7 +12,8 @@ Normally, Kindle devices do not have an SSH client installed, and compiling one 
 - **Landscape Terminal Preset**: Open `kterm` pre-rotated into landscape mode with optimized font size from KUAL.
 - **SCP File Transfer**: Transfer files to and from remote servers, including over Tailscale (`scp` and `scp-tailscale`).
 - **Host Aliases**: Save frequently used connections in `hosts.conf` for quick access (e.g., `ssh myserver` instead of `ssh admin@192.168.1.10:2222`).
-- **Tailscale Support**: Includes `ssh-tailscale` and `scp-tailscale` wrappers that automatically tunnel connections through Tailscale userspace mode (`tailscale nc`), bypassing the lack of native `tun.ko` routing.
+- **Tailscale Support**: Includes `ssh-tailscale` and `scp-tailscale` wrappers that automatically tunnel connections through Tailscale userspace mode (`tailscale nc`), bypassing the lack of native `tun.ko` routing. Install Tailscale's `linux_arm` build to `/mnt/us/extensions/tailscale/bin/tailscale` (any release works — it is also a static 32-bit ARM binary).
+- **Works across generations**: One static ARMv5 soft-float binary runs on every jailbroken Kindle — from early E-ink models through Paperwhite 5, Scribe, and the 2022/2024 basics. See [SUPPORTED-DEVICES.md](SUPPORTED-DEVICES.md).
 - **Easy Key Management**: Generate `ed25519` SSH keys on the Kindle and export the public key to your Kindle's USB drive root (`kindle_ssh_key.pub`).
 - **Multiple Keys**: Generate and manage multiple named SSH keys for different hosts or purposes (`listkeys.sh` and `ssh -i <name>`).
 - **Custom Port Support**: Connect to SSH servers on non-standard ports (`-p port`), including over Tailscale tunnels.

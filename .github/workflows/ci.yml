@@ -33,18 +33,29 @@ jobs:
       - name: Validate KUAL Files (config.xml & menu.json)
         run: |
           python3 -c "
-          import json, xml.etree.ElementTree as ET
+          import json, os, stat, xml.etree.ElementTree as ET
           # Validate XML
           tree = ET.parse('extensions/sshk/config.xml')
           root = tree.getroot()
           assert root.tag == 'extension', 'Root element must be extension'
-          print('✓ config.xml is valid XML')
-          
-          # Validate JSON
+          ext_id = root.findtext('./information/id')
+          assert ext_id == 'sshk', f'config.xml id ({ext_id}) must match directory name (sshk)'
+          print('✓ config.xml is valid XML, id matches directory')
+
+          # Validate JSON structure
           data = json.load(open('extensions/sshk/menu.json'))
           assert 'items' in data
           assert len(data['items']) > 0
-          print('✓ menu.json is valid')
+
+          # Cross-reference: every menu action must exist and be executable
+          base = 'extensions/sshk'
+          for item in data['items']:
+              action = item['action']
+              path = os.path.join(base, action)
+              assert os.path.isfile(path), f'menu item {item[\"name\"]!r}: missing {action}'
+              mode = os.stat(path).st_mode
+              assert mode & stat.S_IXUSR, f'{action} referenced by menu but not executable'
+              print(f\"✓ priority {item['priority']}: {action} exists and is executable\")
           "
 
       - name: Run ShellCheck
