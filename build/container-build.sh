@@ -155,6 +155,22 @@ arm-linux-gnueabi-ar rcs "$PREFIX/lib/libcrypt.a"
 make -j"$(nproc)" MULTI=1 STATIC=1 PROGRAMS="dbclient dropbear dropbearkey scp" \
     AR="arm-linux-gnueabi-ar" RANLIB="arm-linux-gnueabi-ranlib"
 
+echo "==> relinking with an explicit static command"
+# Debian's cross-gcc injects -Wl,-pie hardening AFTER user flags, which
+# downgrades -static to a dynamic PIE. Capture make's link command, strip
+# every PIE/hardening token, and relink statically ourselves.
+LINK_CMD="$(make -n MULTI=1 STATIC=1 PROGRAMS="dbclient dropbear dropbearkey scp" \
+    AR="arm-linux-gnueabi-ar" RANLIB="arm-linux-gnueabi-ranlib" 2>/dev/null \
+    | grep "$PREFIX/bin/musl-gcc" | grep -- '-o dropbearmulti' | head -n 1)"
+if [ -z "$LINK_CMD" ]; then
+    echo "could not capture link command for static relink" >&2
+    exit 1
+fi
+printf '%s\n' "$LINK_CMD" \
+    | sed 's/-Wl,-pie//g; s/[[:space:]]-pie//g; s/-fPIE//g; s/-fpie//g; s/-Wl,-z,now//g; s/-Wl,-z,relro//g; s/$/ -static/' \
+    > "$WORK/relink.sh"
+sh "$WORK/relink.sh" || { echo "static relink failed" >&2; exit 1; }
+
 # Binary lands at the source root (2020.x) or under src/ depending on release
 if [ -f dropbearmulti ]; then
     DBMULTI="dropbearmulti"
