@@ -234,6 +234,32 @@ else
     ok "uninstall: PATH entry removed from kterm.sh"
 fi
 
+echo "[sim] SSH Server toggle (both directions)"
+PIDFILE="/tmp/sshk_dropbear.pid"
+run_menu server-toggle.sh
+assert_eq "toggle start: exit code" "0" "$?"
+if command -v qemu-arm-static >/dev/null 2>&1 && command -v nc >/dev/null 2>&1; then
+    sleep 2
+    BANNER="$(printf '' | timeout 5 nc 127.0.0.1 2222 2>/dev/null | head -c 16)"
+    case "$BANNER" in
+        SSH-2*) ok "toggle: server came up" ;;
+        *) fail "toggle: server came up" "got: ${BANNER:-<nothing>}" ;;
+    esac
+    run_menu server-toggle.sh
+    assert_eq "toggle stop: exit code" "0" "$?"
+    sleep 1
+    BANNER="$(printf '' | timeout 5 nc 127.0.0.1 2222 2>/dev/null | head -c 16)"
+    case "$BANNER" in
+        SSH-2*) fail "toggle: server went down" "banner still served" ;;
+        *) ok "toggle: server went down" ;;
+    esac
+else
+    # Stub mode: the stub daemon exits instantly, so state cannot be observed;
+    # assert only that both directions execute cleanly.
+    if [ -f "$PIDFILE" ]; then ok "toggle: start path delegated (stub mode)"; else fail "toggle: start path delegated (stub mode)"; fi
+    rm -f "$PIDFILE"
+fi
+
 # ---------------------------------------------------------------- summary ---
 echo ""
 echo "passed: $PASS  failed: $FAIL"

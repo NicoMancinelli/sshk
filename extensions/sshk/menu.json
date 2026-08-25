@@ -11,38 +11,41 @@
       "action": "bin/kterm-landscape.sh"
     },
     {
-      "name": "🟢 Start SSH Server (Port 2222)",
+      "name": "🔁 SSH Server (Start/Stop, Port 2222)",
       "priority": 2,
-      "action": "bin/server-start.sh"
+      "action": "bin/server-toggle.sh"
     },
     {
-      "name": "🔴 Stop SSH Server",
+      "name": "🔑 SSH Keys",
       "priority": 3,
-      "action": "bin/server-stop.sh"
-    },
-    {
-      "name": "📋 List SSH Keys",
-      "priority": 4,
-      "action": "bin/listkeys.sh"
-    },
-    {
-      "name": "🔑 Generate New SSH Key",
-      "priority": 5,
-      "action": "bin/genkey.sh"
-    },
-    {
-      "name": "📤 Export Public SSH Key",
-      "priority": 6,
-      "action": "bin/showkey.sh"
+      "menu": {
+        "items": [
+          {
+            "name": "📋 List Keys",
+            "priority": 0,
+            "action": "bin/listkeys.sh"
+          },
+          {
+            "name": "🔑 Generate New Key",
+            "priority": 1,
+            "action": "bin/genkey.sh"
+          },
+          {
+            "name": "📤 Export Public Key",
+            "priority": 2,
+            "action": "bin/showkey.sh"
+          }
+        ]
+      }
     },
     {
       "name": "ℹ️ About sshk",
-      "priority": 7,
+      "priority": 4,
       "action": "bin/version.sh"
     },
     {
-      "name": "🗑️ Uninstall SSH from kterm",
-      "priority": 8,
+      "name": "🗑️ Uninstall",
+      "priority": 5,
       "action": "bin/uninstall.sh"
     }
   ]

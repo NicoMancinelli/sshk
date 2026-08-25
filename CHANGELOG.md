@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.4] - 2026-08-24
+
+### Changed
+- **KUAL menu cleanup**: 9 flat items are now 6 — Start/Stop Server merged into a single **🔁 SSH Server (Start/Stop)** toggle (`server-toggle.sh`), and the three key-management actions live under a **🔑 SSH Keys** submenu; Setup, Landscape Terminal, About and Uninstall stay top-level
+- Simulator covers the server toggle in both directions
+
 ## [1.3] - 2026-08-24
 
 ### Added
