@@ -2,7 +2,7 @@
 <extension>
 	<information>
 		<name>sshk: SSH Client</name>
-		<version>1.3</version>
+		<version>1.4</version>
 		<author>Nico Mancinelli</author>
 		<id>sshk</id>
 	</information>

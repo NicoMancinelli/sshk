@@ -47,15 +47,26 @@ jobs:
           assert 'items' in data
           assert len(data['items']) > 0
 
-          # Cross-reference: every menu action must exist and be executable
+          # Cross-reference: every menu action must exist and be executable,
+          # recursing into nested "menu" submenus.
           base = 'extensions/sshk'
-          for item in data['items']:
-              action = item['action']
-              path = os.path.join(base, action)
-              assert os.path.isfile(path), f'menu item {item[\"name\"]!r}: missing {action}'
-              mode = os.stat(path).st_mode
-              assert mode & stat.S_IXUSR, f'{action} referenced by menu but not executable'
-              print(f\"✓ priority {item['priority']}: {action} exists and is executable\")
+
+          def check_items(items, prefix=''):
+              for item in items:
+                  name = item['name']
+                  if 'menu' in item:
+                      sub = item['menu']
+                      assert 'items' in sub and len(sub['items']) > 0, f'{name}: empty submenu'
+                      check_items(sub['items'], prefix + name + ' > ')
+                      continue
+                  action = item['action']
+                  path = os.path.join(base, action)
+                  assert os.path.isfile(path), f'menu item {prefix + name!r}: missing {action}'
+                  mode = os.stat(path).st_mode
+                  assert mode & stat.S_IXUSR, f'{action} referenced by menu but not executable'
+                  print(f\"✓ {prefix}{name}: {action} exists and is executable\")
+
+          check_items(data['items'])
           "
 
       - name: Run ShellCheck
