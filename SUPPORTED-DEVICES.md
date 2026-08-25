@@ -44,7 +44,7 @@ maintained by
 
 | Device | Generation | Year | Userland | Jailbreak route | sshk status |
 | --- | --- | --- | --- | --- | --- |
-| Kindle Paperwhite 5 / Signature Ed. | 11th gen | 2021 | 32-bit ARM (MTK) | LanguageBreak ≤ 5.16.2.x | Binary-compatible ✅ · on-device pending ⏳ ([#6](https://github.com/NicoMancinelli/sshk/issues/6)) |
+| Kindle Paperwhite 5 / Signature Ed. | 11th gen | 2021 | 32-bit ARM (MTK) | LanguageBreak ≤ 5.16.2.x | **Confirmed working on-device ✅** ([#6](https://github.com/NicoMancinelli/sshk/issues/6)) — core client in kterm |
 | Kindle Paperwhite 6 | 12th gen | 2024 | 32-bit ARM (MTK) | see MobileRead exploit tracker | Binary-compatible ✅ · on-device pending ⏳ |
 | Kindle (basic) | 11th gen | 2022 | 32-bit ARM (MTK) | LanguageBreak ≤ 5.16.2.x | Binary-compatible ✅ · on-device pending ⏳ ([#8](https://github.com/NicoMancinelli/sshk/issues/8)) |
 | Kindle (basic) | 12th gen | 2024 | 32-bit ARM (MTK) | see MobileRead exploit tracker | Binary-compatible ✅ · on-device pending ⏳ ([#9](https://github.com/NicoMancinelli/sshk/issues/9)) |
