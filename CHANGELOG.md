@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [1.5] - Unreleased
+## [1.5] - 2026-08-27
 
 ### Security
 - **`ssh-tailscale`**: drops the unconditional `-y` (auto-accept) flag and now runs the same writable-`known_hosts` probe as `ssh`. Tailnet connections previously bypassed host-key verification entirely, which is the worst possible place to skip it (personal devices, often no unique usernames). Falls back to `-y` only when `/root/.ssh/known_hosts` cannot be created or written.
@@ -24,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **`genkey.sh`**: errors from `dropbearkey -t ed25519` are routed to stderr instead of being lost to `/mnt/us/sshk_error.log` (which doesn't exist off Kindle).
 
 ### Tests
-- Functional tests grow from 20 to **34 assertions**. New coverage:
+- Functional tests grow from 20 to **44 assertions**. New coverage:
   - `known_hosts` probe forces `-y` on both `ssh` and `ssh-tailscale` (via `SSHK_TEST_FORCE_AUTO_ACCEPT=1`).
   - `ssh-tailscale -i <name>` maps to `kindle_<name>_key` and skips native-key generation.
   - `ssh-tailscale` exits 1 with a stderr mention of `tailscale` when the binary cannot be located.
