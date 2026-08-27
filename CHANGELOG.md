@@ -37,6 +37,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   - `uninstall.sh` verifies the symlink target before removing it.
   - `authorize-server.sh`'s heredoc-based remote invocation does not interpolate `$PUBKEY_CONTENT` into a shell command.
 
+## [1.5.1] - 2026-08-27
+
+### Security
+- **`uninstall.sh`**: now refuses to run unless the user types `YES` at the prompt (or invokes with `--force`). The KUAL `🗑️ Uninstall` path reads from `/dev/tty` so the prompt works even though KUAL doesn't connect stdin. SSH keys on the USB drive are NOT removed; only the kterm PATH patch is reverted and the sshk-managed `/root/.ssh` symlink is removed if it points at our directory. A stray KUAL tap can no longer clobber the install.
+
+### Changed
+- **KUAL menu**: collapsed `ℹ️ About sshk` and `🗑️ Uninstall` into a new `⚙️ More` submenu. The four day-to-day items (`⚡ 1-Tap Setup`, `🖥️ Open SSH Terminal`, `🔁 SSH Server`, `🔑 SSH Keys`) stay at the top level.
+
+### Tests
+- Functional tests grow from 44 to **47 assertions**. New coverage:
+  - `uninstall.sh` rejects a non-YES answer with non-zero exit.
+  - `uninstall.sh --force` proceeds without prompting and exits 0.
+  - `uninstall.sh` has an explicit YES confirmation gate (FORCE check + read + YES comparison).
+
 ## [1.4] - 2026-08-24
 
 ### Changed

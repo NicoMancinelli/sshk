@@ -226,7 +226,11 @@ if command -v qemu-arm-static >/dev/null 2>&1; then
 fi
 
 echo "[sim] Uninstall SSH from kterm"
-run_menu uninstall.sh
+# uninstall.sh requires explicit confirmation (typed YES) so a stray tap
+# in the KUAL menu cannot clobber the install. The KUAL path wires this
+# up via /dev/tty; the sim has neither, so we use --force to exercise
+# the actual uninstall logic, then assert the same effect on kterm.sh.
+run_menu uninstall.sh --force
 assert_eq "uninstall: exit code" "0" "$?"
 if grep -q "extensions/sshk/bin" "$KTERMBIN/kterm.sh"; then
     fail "uninstall: PATH entry removed from kterm.sh"

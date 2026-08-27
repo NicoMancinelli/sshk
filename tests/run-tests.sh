@@ -451,6 +451,46 @@ else
         "expected heredoc-based ssh invocation without \$PUBKEY_CONTENT interpolation"
 fi
 
+# uninstall.sh now requires explicit confirmation (typed YES) so a stray tap
+# in the KUAL menu cannot clobber the install. We test the three contract
+# paths here in the host sandbox.
+if [ -x "$BIN/../bin/uninstall.sh" ]; then
+    UNINSTALL_SH="$BIN/../bin/uninstall.sh"
+elif [ -x "$ROOT/extensions/sshk/bin/uninstall.sh" ]; then
+    UNINSTALL_SH="$ROOT/extensions/sshk/bin/uninstall.sh"
+else
+    fail "uninstall.sh exists and is executable" "missing $ROOT/extensions/sshk/bin/uninstall.sh"
+    UNINSTALL_SH=""
+fi
+if [ -n "${UNINSTALL_SH:-}" ]; then
+    # Path 1: wrong answer -> abort with non-zero exit.
+    RC=$(printf 'nope\n' | SSHK_US_ROOT="$SANDBOX" "$UNINSTALL_SH" >/dev/null 2>&1; echo $?)
+    if [ "$RC" -ne 0 ]; then
+        ok "uninstall.sh rejects non-YES answer"
+    else
+        fail "uninstall.sh rejects non-YES answer" "exit was 0"
+    fi
+    # Path 2: --force -> exits 0, runs the cleanup. We can't assert on
+    # kterm.sh here because the script runs in-process and the eips helper
+    # isn't available; just confirm --force returns 0.
+    RC=$(SSHK_US_ROOT="$SANDBOX" "$UNINSTALL_SH" --force >/dev/null 2>&1; echo $?)
+    if [ "$RC" -eq 0 ]; then
+        ok "uninstall.sh --force proceeds without prompting"
+    else
+        fail "uninstall.sh --force proceeds without prompting" "exit was $RC"
+    fi
+    # Path 3: contract check — the script must gate the prompt on user
+    # input, not auto-confirm.
+    if grep -q 'if \[ "\$FORCE" -ne 1 \]' "$UNINSTALL_SH" && \
+       grep -q 'read -r reply' "$UNINSTALL_SH" && \
+       grep -q 'YES' "$UNINSTALL_SH"; then
+        ok "uninstall.sh has explicit YES confirmation gate"
+    else
+        fail "uninstall.sh has explicit YES confirmation gate" \
+            "expected FORCE check + read -r reply + YES comparison"
+    fi
+fi
+
 # ---------------------------------------------------------------- summary ---
 echo ""
 echo "passed: $PASS  failed: $FAIL"
