@@ -26,12 +26,19 @@ else
     fi
 fi
 
-# Remove known_hosts symlink if we created it
+# Remove the known_hosts symlink ONLY if it points at our sshk directory.
+# Without this check we would happily clobber a symlink the user set up for
+# some other purpose (e.g. an OpenSSH home on a developer Kindle).
+EXPECTED_TARGET="$US_ROOT/extensions/sshk/.ssh"
 if [ -L "/root/.ssh" ]; then
-    if command -v mntroot >/dev/null 2>&1; then
-        mntroot rw 2>/dev/null
-        rm -f /root/.ssh
-        mkdir -p /root/.ssh
-        mntroot ro 2>/dev/null
+    ACTUAL_TARGET=$(readlink -f "/root/.ssh" 2>/dev/null) || ACTUAL_TARGET=""
+    EXPECTED_REAL=$(readlink -f "$EXPECTED_TARGET" 2>/dev/null) || EXPECTED_REAL="$EXPECTED_TARGET"
+    if [ -n "$ACTUAL_TARGET" ] && [ "$ACTUAL_TARGET" = "$EXPECTED_REAL" ]; then
+        if command -v mntroot >/dev/null 2>&1; then
+            mntroot rw 2>/dev/null
+            rm -f /root/.ssh
+            mkdir -p /root/.ssh
+            mntroot ro 2>/dev/null
+        fi
     fi
 fi

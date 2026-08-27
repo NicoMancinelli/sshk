@@ -8,18 +8,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Security
 - **`ssh-tailscale`**: drops the unconditional `-y` (auto-accept) flag and now runs the same writable-`known_hosts` probe as `ssh`. Tailnet connections previously bypassed host-key verification entirely, which is the worst possible place to skip it (personal devices, often no unique usernames). Falls back to `-y` only when `/root/.ssh/known_hosts` cannot be created or written.
+- **`authorize-server.sh`**: the public key is now uploaded to the remote host via SSH stdin (heredoc-based script body), not interpolated into the remote command line. A public key containing shell metacharacters (single quote, semicolon, backtick, `$(...)`) could previously have triggered arbitrary remote shell execution because the old `ssh -p $PORT $TARGET "...grep -qxF '$PUBKEY_CONTENT'..."` command string-concatenated the key text into a remote `sh -c` invocation. The new path writes the key to a temp file via stdin and `grep -qxF`'s the *file contents* on the remote side, so the key text is data, not code.
+- **`ssh-menu`**: the alias lookup no longer uses `eval` to populate the per-alias variables. The new implementation stores the alias list in a newline-separated variable and looks the chosen row up with `sed -n "${n}p"`, so a `hosts.conf` line whose alias contains shell metacharacters is now data, not code, at the moment the user selects it.
+- **`uninstall.sh`**: only removes `/root/.ssh` if the symlink target is the sshk-managed `.ssh` directory under `$SSHK_US_ROOT`. Previously, an unrelated symlink at `/root/.ssh` would be silently replaced with a real directory.
 
 ### Fixed
 - **`ssh-tailscale`**: `which tailscale` -> `command -v tailscale`. `which` is not in POSIX and is missing from the BusyBox/toybox userland shipped on most Kindles, so the PATH fallback could silently fail in production.
 - **`scp-tailscale`**: aliases from `hosts.conf` are now resolved locally, and the alias's port / named key are threaded into dropbear-scp's argv so `scp-tailscale work_server file /dst` works the same way `ssh-tailscale work_server` did. User-supplied `-P` and `-i` already flowed through to `ssh-tailscale` via dropbear-scp's existing forwarding logic; the wrapper now also injects the native key for the local protocol side.
 - **`ssh` / `ssh-tailscale`**: missing-target error path uses the project's `sshk:` prefix for consistency with the rest of the codebase. Plain `ssh` now prints a usage block on no-args (matching `ssh-tailscale`).
+- **`server-start.sh`**: PIDFILE now contains the live dropbear daemon PID, not the wrapper shell's PID. Dropbear double-forks, so `$!` immediately after launch was always stale; the script now sleeps 2s and looks the daemon up via `pgrep -f "dropbear .*-p <PORT>"` (a token match that holds under both direct invocation and qemu-arm-static emulation), then writes the live PID back into PIDFILE. Downstream `server-stop.sh` and `server-toggle.sh` use the same pattern so they only target *our* dropbear daemon, never any process whose argv happens to contain `-p 2222`.
+- **`server-stop.sh`**: rewritten around the anchored pattern; replaces the previous unanchored `pkill -f "dropbear -p 2222"` (which could false-positive) and now reports STOPPED vs NOT RUNNING explicitly.
+- **`server-toggle.sh`**: same anchored pattern fix.
+- **`install.sh`**: `VERSION` is read defensively (missing or empty file no longer produces a banner that says `sshk v: 1-Tap Installation`), and the 19-line `chmod +x` block is replaced with one glob + one case statement so a typo'd filename in `$BINDIR` is visible in the trace instead of being silently swallowed.
+- **`showkey.sh`**: now captures `dropbearkey -y` output once and inspects both the public-key line and the fingerprint from the same snapshot. Errors from dropbearkey are routed to stderr; a failure no longer reports a misleading `Saved:` banner.
+- **`genkey.sh`**: errors from `dropbearkey -t ed25519` are routed to stderr instead of being lost to `/mnt/us/sshk_error.log` (which doesn't exist off Kindle).
 
 ### Tests
-- Functional tests grow from 20 to 30 assertions. New coverage:
+- Functional tests grow from 20 to **34 assertions**. New coverage:
   - `known_hosts` probe forces `-y` on both `ssh` and `ssh-tailscale` (via `SSHK_TEST_FORCE_AUTO_ACCEPT=1`).
   - `ssh-tailscale -i <name>` maps to `kindle_<name>_key` and skips native-key generation.
   - `ssh-tailscale` exits 1 with a stderr mention of `tailscale` when the binary cannot be located.
-  - `scp-tailscale` forwards user `-i` / `-P`, native key, alias host/port/key, and absolute-path keys correctly.
+  - `scp-tailscale` forwards user `-i` / `-P`, native key, alias host/port/key, absolute-path keys, multi-source cases, and download (local target) cases correctly.
+  - `scp-tailscale` boolean flags (`-r`, `-C`) do not consume the next argv slot.
+  - ssh-menu picks aliases by index without `eval`, with an alias whose name contains shell metacharacters (single-quoted, semicolon) passed verbatim to `ssh`.
+  - ssh-menu rejects out-of-range numeric choices and quits on `q` without invoking `ssh`.
+  - `server-start.sh` uses an anchored multi-call pattern for PID lookup; PIDFILE overwritten with the live daemon PID.
+  - `server-stop.sh` and `server-toggle.sh` use the same anchored pattern.
+  - `uninstall.sh` verifies the symlink target before removing it.
+  - `authorize-server.sh`'s heredoc-based remote invocation does not interpolate `$PUBKEY_CONTENT` into a shell command.
 
 ## [1.4] - 2026-08-24
 

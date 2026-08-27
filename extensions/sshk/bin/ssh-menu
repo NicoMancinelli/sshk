@@ -38,10 +38,14 @@ fi
 echo "=========================================="
 echo ""
 
+# ALIASES is a newline-separated list, in the order they were read from
+# hosts.conf. Looking up by index via `sed -n "${n}p"` avoids `eval`, so a
+# hosts.conf line containing shell metacharacters cannot trigger code
+# execution when its alias is selected.
+ALIASES=""
 COUNT=0
 
 if [ -f "$CONF" ]; then
-    # Read non-comment, non-empty lines
     while IFS= read -r line || [ -n "$line" ]; do
         trimmed=$(echo "$line" | sed 's/^[ \t]*//')
         case "$trimmed" in
@@ -51,14 +55,19 @@ if [ -f "$CONF" ]; then
                 alias_name=$(echo "$trimmed" | awk '{print $1}')
                 alias_target=$(echo "$trimmed" | awk '{print $2}')
                 alias_key=$(echo "$trimmed" | awk '{print $3}')
-                
+
                 key_info=""
                 if [ -n "$alias_key" ]; then
                     key_info=" (key: $alias_key)"
                 fi
-                
+
                 printf "  [%d] %-12s -> %s%s\n" "$COUNT" "$alias_name" "$alias_target" "$key_info"
-                eval "ALIAS_${COUNT}=\"$alias_name\""
+                if [ -z "$ALIASES" ]; then
+                    ALIASES="$alias_name"
+                else
+                    ALIASES="$ALIASES
+$alias_name"
+                fi
                 ;;
         esac
     done < "$CONF"
@@ -76,6 +85,16 @@ echo "  [r] Refresh E-Ink Screen [q] Quit"
 echo ""
 printf "Enter choice: "
 read -r choice
+
+# Pull the alias name for the user's numeric choice without eval. An empty
+# result means the choice was out of range.
+selected_alias=""
+case "$choice" in
+    *[!0-9]*|"") : ;;  # non-numeric
+    *)
+        selected_alias=$(printf '%s\n' "$ALIASES" | sed -n "${choice}p" 2>/dev/null)
+        ;;
+esac
 
 case "$choice" in
     q|Q|"")
@@ -104,7 +123,7 @@ case "$choice" in
             sleep 1
             exec "$0"
         fi
-        
+
         printf "Connection target (user@host[:port]): "
         read -r new_target
         if [ -z "$new_target" ]; then
@@ -112,16 +131,15 @@ case "$choice" in
             sleep 1
             exec "$0"
         fi
-        
+
         printf "Custom key name (optional, press Enter for default): "
         read -r new_key
-        
+
         entry="$new_alias $new_target"
         if [ -n "$new_key" ]; then
             entry="$entry $new_key"
         fi
-        
-        # Ensure hosts.conf exists and append
+
         touch "$CONF"
         echo "$entry" >> "$CONF"
         echo "✓ Added '$new_alias' to hosts.conf!"
@@ -145,8 +163,6 @@ case "$choice" in
         fi
         ;;
     *)
-        selected_alias=""
-        eval "selected_alias=\"\$ALIAS_${choice}\""
         if [ -n "$selected_alias" ]; then
             echo ""
             echo "Connecting to $selected_alias..."
