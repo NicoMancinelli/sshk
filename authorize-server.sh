@@ -89,8 +89,28 @@ echo "  $PUBKEY_CONTENT"
 echo ""
 echo "${BLUE}Connecting to $TARGET (port $PORT) to install public key...${NC}"
 
-# Upload key using SSH
-ssh -p "$PORT" "$TARGET" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qxF '$PUBKEY_CONTENT' ~/.ssh/authorized_keys || echo '$PUBKEY_CONTENT' >> ~/.ssh/authorized_keys"
+# Upload the key via SSH, piping it through stdin so the key text is NEVER
+# interpolated into the remote command line. This prevents a malicious or
+# corrupted key file (or any environment that re-encodes the key text) from
+# injecting shell metacharacters into the remote shell.
+#
+# The remote side: ensure ~/.ssh exists, ensure authorized_keys is in place,
+# strip a CR character that some Dropbear builds append to the key line, then
+# append the key (or no-op if it's already present).
+ssh -p "$PORT" "$TARGET" <<'REMOTE'
+set -e
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+touch ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+# Strip a trailing CR so this works on hosts that send CRLF on the wire.
+tr -d '\r' > ~/.ssh/sshk_pending_key.pub
+KEY=$(cat ~/.ssh/sshk_pending_key.pub)
+if ! grep -qxF "$KEY" ~/.ssh/authorized_keys 2>/dev/null; then
+    printf '%s\n' "$KEY" >> ~/.ssh/authorized_keys
+fi
+rm -f ~/.ssh/sshk_pending_key.pub
+REMOTE
 
 echo ""
 echo "${BOLD}${GREEN}====================================================${NC}"

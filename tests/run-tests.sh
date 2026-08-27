@@ -308,6 +308,149 @@ reset_case
 assert_dbclient_args "scp-tailscale handles multiple sources" \
     scp -S "$BIN/ssh-tailscale" src1 src2 src3 user@10.0.0.5:/dst
 
+echo "== ssh-menu wrapper =="
+
+# ssh-menu's alias lookup used to use `eval`, which meant any shell-meta in
+# a hosts.conf line (e.g. `"evil; rm -rf /tmp"`) was at risk of being
+# evaluated the moment the user picked that alias. The new implementation
+# stores the alias list in a newline-separated variable and looks it up with
+# `sed -n "${n}p"`, which preserves the value verbatim.
+
+MENU_SANDBOX="$SANDBOX/menu"
+mkdir -p "$MENU_SANDBOX/bin" "$MENU_SANDBOX"
+for f in ssh-menu ssh-tailscale; do
+    cp "$ROOT/extensions/sshk/bin/$f" "$MENU_SANDBOX/bin/"
+    chmod +x "$MENU_SANDBOX/bin/$f"
+done
+# Stub `ssh` so we can assert exactly what argv ssh-menu passes to it.
+cat > "$MENU_SANDBOX/bin/ssh" <<'STUBEOF'
+#!/bin/sh
+echo "$*" >> "$SSHK_TEST_LOG"
+STUBEOF
+chmod +x "$MENU_SANDBOX/bin/ssh"
+# hosts.conf with a comment, blank lines, and three aliases. The middle
+# alias contains shell metacharacters (single quotes, semicolons, spaces)
+# that the old `eval`-based lookup would have executed if selected. The new
+# implementation must treat the alias as data and pass it verbatim to ssh.
+# (Note: `awk '{print $1}'` truncates at the first whitespace, so the alias
+# itself must not contain spaces — this is a limitation of the alias
+# format, not of the lookup.)
+cat > "$MENU_SANDBOX/hosts.conf" <<'CONF'
+# This is a comment line, ignored.
+
+alpha admin@10.0.0.1
+'evil;rm-rf/tmp' admin@10.0.0.2
+gamma root@10.0.0.3
+CONF
+
+reset_case
+# Choice "2" should select the second alias verbatim and exec ssh with it.
+echo "2" | PATH="$MENU_SANDBOX/bin:$PATH" SSHK_TEST_LOG="$SSHK_TEST_LOG" "$MENU_SANDBOX/bin/ssh-menu" >/dev/null 2>&1
+if [ "$(cat "$SSHK_TEST_LOG" 2>/dev/null)" = "'evil;rm-rf/tmp'" ]; then
+    ok "ssh-menu picks aliases by index without eval"
+else
+    fail "ssh-menu picks aliases by index without eval" "got: $(cat "$SSHK_TEST_LOG" 2>/dev/null)"
+fi
+# Verify the sandbox is still present (the literal alias must not have been
+# evaluated as a shell command).
+if [ -d "$MENU_SANDBOX" ]; then
+    ok "ssh-menu does not eval shell metacharacters in alias names"
+else
+    fail "ssh-menu does not eval shell metacharacters in alias names" "sandbox was removed"
+fi
+
+reset_case
+# Out-of-range numeric choice should print Invalid and re-exec; ssh is never
+# invoked, so the log stays empty.
+echo "99" | PATH="$MENU_SANDBOX/bin:$PATH" SSHK_TEST_LOG="$SSHK_TEST_LOG" "$MENU_SANDBOX/bin/ssh-menu" >/dev/null 2>&1
+if [ ! -s "$SSHK_TEST_LOG" ]; then
+    ok "ssh-menu rejects out-of-range numeric choice"
+else
+    fail "ssh-menu rejects out-of-range numeric choice" "ssh was invoked with: $(cat "$SSHK_TEST_LOG")"
+fi
+
+reset_case
+# Letter choice "q" should quit (no ssh invocation).
+echo "q" | PATH="$MENU_SANDBOX/bin:$PATH" SSHK_TEST_LOG="$SSHK_TEST_LOG" "$MENU_SANDBOX/bin/ssh-menu" >/dev/null 2>&1
+if [ ! -s "$SSHK_TEST_LOG" ]; then
+    ok "ssh-menu quits on q"
+else
+    fail "ssh-menu quits on q" "ssh was invoked with: $(cat "$SSHK_TEST_LOG")"
+fi
+
+echo "== server scripts =="
+
+# The PIDFILE written by server-start.sh used to be the wrapper shell's PID
+# (Dropbear double-forks, so the immediate child of the wrapper is a
+# short-lived parent, not the daemon). The simulator can't easily exercise
+# the real ARM dropbear here, so we test the contract: the script must use
+# an anchored pattern (`^dropbearmulti dropbear .*-p <PORT>`) that only
+# matches our own multi-call binary invocation, not the wrapper shell.
+# If the live pidfile PID is stale, the script must look the daemon up in the
+# process table via `pgrep` and overwrite the pidfile with the live PID.
+if grep -q '^DROPBEAR_PATTERN=' extensions/sshk/bin/server-start.sh && \
+   grep -q 'DROPBEAR_PATTERN="dropbear .*-p $PORT"' extensions/sshk/bin/server-start.sh; then
+    ok "server-start.sh uses anchored multi-call pattern for PID lookup"
+else
+    fail "server-start.sh uses anchored multi-call pattern for PID lookup" \
+        "expected 'dropbear .*-p \$PORT' pattern in server-start.sh"
+fi
+if grep -q 'find_live_pid' extensions/sshk/bin/server-start.sh && \
+   grep -q 'echo "$LIVE_PID" > "$PIDFILE"' extensions/sshk/bin/server-start.sh; then
+    ok "server-start.sh overwrites pidfile with the live daemon PID"
+else
+    fail "server-start.sh overwrites pidfile with the live daemon PID" \
+        "expected 'echo \"\$LIVE_PID\" > \"\$PIDFILE\"' after PID lookup"
+fi
+
+# server-stop.sh must use the same pattern so it never kills an
+# unrelated process whose argv happens to mention `-p 2222`. We can't
+# anchor on `^dropbearmulti` because under qemu-arm-static the cmdline of
+# the daemon begins with `qemu-arm-static`, not `dropbearmulti`; matching
+# `dropbear .*-p <PORT>` as a substring covers both invocation modes.
+if grep -q 'DROPBEAR_PATTERN="dropbear .*-p $PORT"' extensions/sshk/bin/server-stop.sh && \
+   grep -qE 'pkill -f "\$DROPBEAR_PATTERN"|pgrep -f "\$DROPBEAR_PATTERN"' extensions/sshk/bin/server-stop.sh; then
+    ok "server-stop.sh kills only the sshk dropbear process"
+else
+    fail "server-stop.sh kills only the sshk dropbear process" \
+        "expected 'dropbear .*-p \$PORT' + pkill/pgrep -f in server-stop.sh"
+fi
+
+# server-toggle.sh must use the same pattern.
+if grep -q 'DROPBEAR_PATTERN="dropbear .*-p $PORT"' extensions/sshk/bin/server-toggle.sh; then
+    ok "server-toggle.sh uses the sshk dropbear pattern"
+else
+    fail "server-toggle.sh uses the sshk dropbear pattern" \
+        "expected 'dropbear .*-p \$PORT' in server-toggle.sh"
+fi
+
+# uninstall.sh must verify the /root/.ssh symlink target before removing it.
+# Otherwise we would happily clobber a symlink the user set up for some
+# other purpose (e.g. an OpenSSH home on a developer Kindle).
+if grep -q 'EXPECTED_TARGET' extensions/sshk/bin/uninstall.sh && \
+   grep -q 'ACTUAL_TARGET' extensions/sshk/bin/uninstall.sh; then
+    ok "uninstall.sh only removes the sshk known_hosts symlink"
+else
+    fail "uninstall.sh only removes the sshk known_hosts symlink" \
+        "expected EXPECTED_TARGET / ACTUAL_TARGET guard in uninstall.sh"
+fi
+
+# authorize-server.sh must pipe the public key through stdin so that a
+# malicious or corrupted key text containing shell metacharacters cannot
+# inject commands on the remote host. We use a string-grep rather than
+# searching for the literal `<<'REMOTE'` here-doc opener: the heredoc
+# opener itself contains a `<<` that bash/dash will (incorrectly) parse as
+# the start of a here-document inside our double-quoted grep argument.
+if grep -q 'sshk_pending_key.pub' authorize-server.sh && \
+   grep -q 'REMOTE' authorize-server.sh && \
+   ! grep -q "grep -qxF '\$PUBKEY_CONTENT" authorize-server.sh && \
+   ! grep -q "echo '\$PUBKEY_CONTENT" authorize-server.sh; then
+    ok "authorize-server.sh does not interpolate PUBKEY_CONTENT into a shell command"
+else
+    fail "authorize-server.sh does not interpolate PUBKEY_CONTENT into a shell command" \
+        "expected heredoc-based ssh invocation without \$PUBKEY_CONTENT interpolation"
+fi
+
 # ---------------------------------------------------------------- summary ---
 echo ""
 echo "passed: $PASS  failed: $FAIL"

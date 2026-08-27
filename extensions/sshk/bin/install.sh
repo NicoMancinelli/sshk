@@ -6,7 +6,17 @@ EXTDIR="$(cd "$BINDIR/.." && pwd)"
 # USB root; overridable for simulation (tests/kindle-sim). Production default.
 US_ROOT="${SSHK_US_ROOT:-/mnt/us}"
 KTERM_SH="$US_ROOT/extensions/kterm/bin/kterm.sh"
-VERSION=$(cat "$EXTDIR/VERSION" 2>/dev/null || echo "1.4")
+# Read VERSION defensively. If the file is missing (corrupted install, CI
+# sandbox) we still want to print something useful instead of `v` followed by
+# nothing. Strip whitespace so trailing newlines don't leak.
+if [ -r "$EXTDIR/VERSION" ]; then
+    VERSION=$(tr -d '[:space:]' < "$EXTDIR/VERSION")
+else
+    VERSION=""
+fi
+if [ -z "$VERSION" ]; then
+    VERSION="unknown"
+fi
 
 eips_print_row() {
     ROW="$1"
@@ -23,27 +33,24 @@ eips_print_row 3 "========================================"
 
 echo "=== sshk v$VERSION: 1-Tap Installation ==="
 
-# Step 1: Ensure all binaries & scripts are executable
-chmod +x "$BINDIR/dropbearmulti"
-chmod +x "$BINDIR/dbclient"
-chmod +x "$BINDIR/dropbearkey"
-chmod +x "$BINDIR/dropbear" 2>/dev/null
-chmod +x "$BINDIR/ssh"
-chmod +x "$BINDIR/sshk" 2>/dev/null
-chmod +x "$BINDIR/ssh-tailscale"
-chmod +x "$BINDIR/ssh-menu" 2>/dev/null
-chmod +x "$BINDIR/scp" 2>/dev/null
-chmod +x "$BINDIR/scp-tailscale" 2>/dev/null
-chmod +x "$BINDIR/server-start.sh" 2>/dev/null
-chmod +x "$BINDIR/server-stop.sh" 2>/dev/null
-chmod +x "$BINDIR/kterm-landscape.sh" 2>/dev/null
-chmod +x "$BINDIR/install.sh"
-chmod +x "$BINDIR/uninstall.sh"
-chmod +x "$BINDIR/genkey.sh"
-chmod +x "$BINDIR/showkey.sh"
-chmod +x "$BINDIR/listkeys.sh" 2>/dev/null
-chmod +x "$BINDIR/version.sh" 2>/dev/null
-chmod +x "$BINDIR/eips-refresh" 2>/dev/null
+# Step 1: Ensure all binaries & scripts are executable. The previous version
+# was 19 separate `chmod +x` lines, half of which suppressed errors so a
+# typo'd filename would slip through silently. One glob + case statement
+# covers every shipping executable; missing files just don't match the glob.
+# Specific names are listed first so a future `*.sh` suffix wouldn't shadow
+# them. (The plain scripts we ship today all already carry `.sh` — this list
+# catches the suffix-less wrappers `dbclient`, `dropbear`, `dropbearkey`,
+# `dropbearmulti`, `scp`, `scp-tailscale`, `ssh`, `ssh-tailscale`, `sshk`,
+# `ssh-menu`, and `server-toggle.sh`.)
+for f in "$BINDIR"/*; do
+    [ -f "$f" ] || continue
+    name=$(basename "$f")
+    case "$name" in
+        dbclient|dropbear|dropbearkey|dropbearmulti|scp|scp-tailscale|ssh|ssh-tailscale|sshk|ssh-menu|server-toggle.sh|*.sh)
+            chmod +x "$f" 2>/dev/null || :
+            ;;
+    esac
+done
 
 echo "[1/4] Permissions set."
 
