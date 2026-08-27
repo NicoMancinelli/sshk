@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5] - Unreleased
+
+### Security
+- **`ssh-tailscale`**: drops the unconditional `-y` (auto-accept) flag and now runs the same writable-`known_hosts` probe as `ssh`. Tailnet connections previously bypassed host-key verification entirely, which is the worst possible place to skip it (personal devices, often no unique usernames). Falls back to `-y` only when `/root/.ssh/known_hosts` cannot be created or written.
+
+### Fixed
+- **`ssh-tailscale`**: `which tailscale` -> `command -v tailscale`. `which` is not in POSIX and is missing from the BusyBox/toybox userland shipped on most Kindles, so the PATH fallback could silently fail in production.
+- **`scp-tailscale`**: aliases from `hosts.conf` are now resolved locally, and the alias's port / named key are threaded into dropbear-scp's argv so `scp-tailscale work_server file /dst` works the same way `ssh-tailscale work_server` did. User-supplied `-P` and `-i` already flowed through to `ssh-tailscale` via dropbear-scp's existing forwarding logic; the wrapper now also injects the native key for the local protocol side.
+- **`ssh` / `ssh-tailscale`**: missing-target error path uses the project's `sshk:` prefix for consistency with the rest of the codebase. Plain `ssh` now prints a usage block on no-args (matching `ssh-tailscale`).
+
+### Tests
+- Functional tests grow from 20 to 30 assertions. New coverage:
+  - `known_hosts` probe forces `-y` on both `ssh` and `ssh-tailscale` (via `SSHK_TEST_FORCE_AUTO_ACCEPT=1`).
+  - `ssh-tailscale -i <name>` maps to `kindle_<name>_key` and skips native-key generation.
+  - `ssh-tailscale` exits 1 with a stderr mention of `tailscale` when the binary cannot be located.
+  - `scp-tailscale` forwards user `-i` / `-P`, native key, alias host/port/key, and absolute-path keys correctly.
+
 ## [1.4] - 2026-08-24
 
 ### Changed

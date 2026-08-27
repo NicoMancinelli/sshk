@@ -1,17 +1,118 @@
 #!/bin/sh
+# scp-tailscale - copy files over SSH through Tailscale userspace mode.
+#
+# dropbear's scp applet already forwards -i and -P to its -S ssh program
+# (see upstream scp.c: addargs("-i%s", optarg) and addargs("-p%s", optarg)),
+# so this wrapper only has to:
+#   1. Look up host aliases in hosts.conf (the ssh wrapper does this on
+#      the ssh side; scp-tailscale has to do it itself because dropbear-scp
+#      sees the alias as a literal target).
+#   2. Inject the native key for the local-side protocol when one exists.
+# Everything else passes through and is forwarded by dropbear-scp to
+# ssh-tailscale.
 
 BINDIR="$(cd "$(dirname "$0")" && pwd)"
+SCP_BIN="$BINDIR/dropbearmulti"
+CONF="$BINDIR/../hosts.conf"
 
 if [ $# -lt 1 ]; then
     echo "Usage: scp-tailscale [options] source... target"
+    echo ""
+    echo "Examples:"
+    echo "  scp-tailscale file.txt user@host:/path/"
+    echo "  scp-tailscale -P 2223 -i work file.txt user@host:/path/"
+    echo "  scp-tailscale file.txt work_server         # alias from hosts.conf"
+    echo ""
+    echo "Host aliases live in: $CONF"
     exit 1
 fi
 
-# Note: Tailscale discovery is handled by ssh-tailscale (used via -S flag)
+# Walk argv manually: keep every flag together with its argument so we can
+# rebuild the dropbear-scp argv without losing -i / -P / -r etc.
+# The final positional is the target; everything before it is sources
+# (with their own -i / -P flags attached).
+PRE_TARGET=""
+COUNT=$#
+i=0
+while [ $i -lt $COUNT ]; do
+    arg="$1"
+    shift
+    i=$((i + 1))
+    case "$arg" in
+        -[ciPoFSl])
+            # Options that consume a value. (We do not support the --separator
+            # form; users can quote instead.) Dropbear-scp's getopt string is
+            # "dfl:prtvBCc:i:P:q1246S:o:F:" — the flags above are the ones
+            # followed by a colon (i.e. take an argument). Other flags are
+            # boolean and must NOT consume the next argv slot.
+            PRE_TARGET="$PRE_TARGET $arg"
+            if [ $i -lt $COUNT ]; then
+                PRE_TARGET="$PRE_TARGET $1"
+                shift
+                i=$((i + 1))
+            fi
+            ;;
+        -*)
+            PRE_TARGET="$PRE_TARGET $arg"
+            ;;
+        *)
+            # dropbear-scp accepts multiple sources and exactly one target,
+            # so the *last* positional is the target and anything before it
+            # is a source. Detect by position.
+            if [ $i -eq $COUNT ]; then
+                TARGET="$arg"
+            else
+                PRE_TARGET="$PRE_TARGET $arg"
+            fi
+            ;;
+    esac
+done
 
-KEY_ARGS=""
-if [ -f "$BINDIR/kindle_native_key" ]; then
-    KEY_ARGS="-i $BINDIR/kindle_native_key"
+if [ -z "${TARGET:-}" ]; then
+    echo "sshk: scp-tailscale: missing target" >&2
+    exit 1
 fi
 
-exec "$BINDIR/dropbearmulti" scp -S "$BINDIR/ssh-tailscale" $KEY_ARGS "$@"
+# If target is an alias, resolve it.
+ALIAS_KEY=""
+ALIAS_PORT=""
+RESOLVED_TARGET="$TARGET"
+case "$TARGET" in
+    *@*)
+        # Already in user@host[:port] form - leave alone.
+        ;;
+    *)
+        if [ -f "$CONF" ]; then
+            MATCH=$(grep -v '^[[:space:]]*#' "$CONF" | grep -v '^[[:space:]]*$' | awk -v a="$TARGET" '$1 == a {print; exit}')
+            if [ -n "$MATCH" ]; then
+                ALIAS_HOST=$(echo "$MATCH" | awk '{print $2}')
+                ALIAS_KEY=$(echo "$MATCH" | awk '{print $3}')
+                case "$ALIAS_HOST" in
+                    *:*)
+                        ALIAS_PORT="${ALIAS_HOST##*:}"
+                        ALIAS_HOST="${ALIAS_HOST%:*}"
+                        ;;
+                esac
+                RESOLVED_TARGET="$ALIAS_HOST"
+            fi
+        fi
+        ;;
+esac
+
+# Build dropbear-scp argv. We deliberately do NOT pass -i / -P to ssh-tailscale
+# via -S; we let dropbear-scp forward them, which is what its source does.
+SCP_ARGS="scp -S $BINDIR/ssh-tailscale"
+
+if [ -f "$BINDIR/kindle_native_key" ]; then
+    SCP_ARGS="$SCP_ARGS -i $BINDIR/kindle_native_key"
+fi
+
+if [ -n "$ALIAS_PORT" ]; then
+    SCP_ARGS="$SCP_ARGS -P $ALIAS_PORT"
+fi
+
+if [ -n "$ALIAS_KEY" ]; then
+    SCP_ARGS="$SCP_ARGS -i $ALIAS_KEY"
+fi
+
+exec "$SCP_BIN" $SCP_ARGS $PRE_TARGET "$RESOLVED_TARGET"

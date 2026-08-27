@@ -1,16 +1,37 @@
 #!/bin/sh
 # ssh - wrapper around dbclient for Kindle
 BINDIR="$(cd "$(dirname "$0")" && pwd)"
+CONF="$BINDIR/../hosts.conf"
 
-# Known hosts check
+if [ -z "$1" ]; then
+    echo "Usage: ssh [options] user@host[:port] | <alias> [command]"
+    echo ""
+    echo "Examples:"
+    echo "  ssh user@192.168.1.10"
+    echo "  ssh -p 2222 user@host.example"
+    echo "  ssh myserver         # alias from hosts.conf"
+    echo ""
+    echo "Options:"
+    echo "  -i <name|path>   Identity key. Name -> kindle_<name>_key."
+    echo "  -p <port>        SSH port on the remote host."
+    echo "  -L/-R/-l <spec>  Forwarded through to dbclient."
+    echo ""
+    echo "Host aliases live in: $CONF"
+    exit 1
+fi
+
+# Known hosts check. Tests force the auto-accept branch via
+# SSHK_TEST_FORCE_AUTO_ACCEPT=1 so the probe can be exercised
+# deterministically from a non-Kindle sandbox.
 OPTS=""
-if [ -w "/root/.ssh/known_hosts" ] || touch /root/.ssh/known_hosts 2>/dev/null; then
+if [ "${SSHK_TEST_FORCE_AUTO_ACCEPT:-0}" = "1" ]; then
+    OPTS="-y"
+elif [ -w "/root/.ssh/known_hosts" ] || touch /root/.ssh/known_hosts 2>/dev/null; then
     :
 else
     OPTS="-y"
 fi
 
-CONF="$BINDIR/../hosts.conf"
 HAS_I=0
 
 COUNT=$#

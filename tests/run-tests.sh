@@ -181,19 +181,56 @@ assert_rc "options but no target -> error (exit 1)" "1" "$?"
 reset_case
 "$BIN/ssh-tailscale" user@myhost.example >/dev/null 2>&1
 assert_dbclient_args "plain target tunnels via tailscale nc" \
-    -y -i "$NATIVE_KEY" -J "tailscale nc myhost.example 22" user@myhost.example
+    "$Y" -i "$NATIVE_KEY" -J "tailscale nc myhost.example 22" user@myhost.example
 
 reset_case
 "$BIN/ssh-tailscale" -p 2223 user@myhost.example >/dev/null 2>&1
 assert_dbclient_args "custom port reaches ProxyCommand" \
-    -y -i "$NATIVE_KEY" -J "tailscale nc myhost.example 2223" user@myhost.example
+    "$Y" -i "$NATIVE_KEY" -J "tailscale nc myhost.example 2223" user@myhost.example
 
 reset_case
 write_hosts "tsbox u@10.0.0.5:2280 w\n"
 : > "$BIN/kindle_w_key"
 "$BIN/ssh-tailscale" tsbox >/dev/null 2>&1
 assert_dbclient_args "alias resolves host, port and named key over tailscale" \
-    -y -J "tailscale nc 10.0.0.5 2280" -i "$BIN/kindle_w_key" u@10.0.0.5
+    "$Y" -J "tailscale nc 10.0.0.5 2280" -i "$BIN/kindle_w_key" u@10.0.0.5
+
+reset_case
+SSHK_TEST_FORCE_AUTO_ACCEPT=1 "$BIN/ssh-tailscale" user@myhost.example >/dev/null 2>&1
+assert_dbclient_args "known_hosts probe forces -y on tailscale when unwritable" \
+    -y -i "$NATIVE_KEY" -J "tailscale nc myhost.example 22" user@myhost.example
+
+reset_case
+SSHK_TEST_FORCE_AUTO_ACCEPT=1 "$BIN/ssh" user@example.com >/dev/null 2>&1
+assert_dbclient_args "known_hosts probe forces -y on ssh when unwritable" \
+    -y -i "$NATIVE_KEY" user@example.com
+
+reset_case
+"$BIN/ssh-tailscale" -i work user@host.example >/dev/null 2>&1
+assert_dbclient_args "ssh-tailscale -i name maps to kindle_<name>_key" \
+    "$Y" -J "tailscale nc host.example 22" -i "$BIN/kindle_work_key" user@host.example
+if [ ! -f "$NATIVE_KEY" ]; then
+    ok "ssh-tailscale -i name: native key generation skipped"
+else
+    fail "ssh-tailscale -i name: native key generation skipped" "kindle_native_key should not exist"
+fi
+
+reset_case
+# Build a sealed PATH that contains only an empty directory so neither
+# `command -v tailscale` nor any stray host binary can satisfy the lookup.
+SEALED="$SANDBOX/sealed"
+mkdir -p "$SEALED"
+PATH="$SEALED" "$BIN/ssh-tailscale" user@example.com >/tmp/sshr.err 2>&1
+_RC=$?
+assert_rc "ssh-tailscale without tailscale binary -> exit 1" "1" "$_RC"
+if grep -q "tailscale" /tmp/sshr.err; then
+    ok "ssh-tailscale missing-binary error mentions tailscale"
+else
+    fail "ssh-tailscale missing-binary error mentions tailscale" "stderr was:" "$(cat /tmp/sshr.err)"
+fi
+rm -rf "$SEALED"
+# PATH was sealed above; the wrapper's PATH was already exported at sandbox
+# setup, so subsequent calls still see $BIN first.
 
 echo "== scp wrappers =="
 
@@ -220,6 +257,56 @@ reset_case
 "$BIN/scp-tailscale" file.txt user@myhost.example:/tmp/file.txt >/dev/null 2>&1
 assert_dbclient_args "scp-tailscale delegates through ssh-tailscale (-S)" \
     scp -S "$BIN/ssh-tailscale" file.txt user@myhost.example:/tmp/file.txt
+
+reset_case
+: > "$BIN/kindle_work_key"
+"$BIN/scp-tailscale" -i work -P 2223 file.txt u@10.0.0.5:/dst >/dev/null 2>&1
+assert_dbclient_args "scp-tailscale forwards user -i/-P to dropbear-scp" \
+    scp -S "$BIN/ssh-tailscale" -i work -P 2223 file.txt u@10.0.0.5:/dst
+
+reset_case
+: > "$BIN/kindle_native_key"
+"$BIN/scp-tailscale" -P 2223 file.txt u@10.0.0.5:/dst >/dev/null 2>&1
+assert_dbclient_args "scp-tailscale -P forwards port and native key" \
+    scp -S "$BIN/ssh-tailscale" -i "$NATIVE_KEY" -P 2223 file.txt u@10.0.0.5:/dst
+
+reset_case
+write_hosts "work_server u@10.0.0.5:2223 workkey\n"
+: > "$BIN/kindle_native_key"
+: > "$BIN/kindle_workkey_key"
+"$BIN/scp-tailscale" file.txt work_server >/dev/null 2>&1
+assert_dbclient_args "scp-tailscale resolves alias to user@host + port + key" \
+    scp -S "$BIN/ssh-tailscale" -i "$NATIVE_KEY" -P 2223 -i workkey file.txt u@10.0.0.5
+
+reset_case
+# No native key, no alias; just an explicit absolute-path -i (passes through).
+"$BIN/scp-tailscale" -i /absolute/path/key file u@10.0.0.5:/dst >/dev/null 2>&1
+assert_dbclient_args "scp-tailscale -i absolute path passes through" \
+    scp -S "$BIN/ssh-tailscale" -i /absolute/path/key file u@10.0.0.5:/dst
+
+reset_case
+# Boolean flags (-r, -C, -q, ...) must NOT eat the next argv slot.
+"$BIN/scp-tailscale" -r -C dir/ u@10.0.0.5:/dst >/dev/null 2>&1
+assert_dbclient_args "scp-tailscale boolean flags don't eat next argv" \
+    scp -S "$BIN/ssh-tailscale" -r -C dir/ u@10.0.0.5:/dst
+
+reset_case
+# Value-consuming flag (-l 1000) must eat the next argv slot.
+"$BIN/scp-tailscale" -l 1000 file u@10.0.0.5:/dst >/dev/null 2>&1
+assert_dbclient_args "scp-tailscale -l keeps its argument" \
+    scp -S "$BIN/ssh-tailscale" -l 1000 file u@10.0.0.5:/dst
+
+reset_case
+# Download case: target is a local path, source is the remote one.
+"$BIN/scp-tailscale" user@10.0.0.5:/src ./localdir >/dev/null 2>&1
+assert_dbclient_args "scp-tailscale download uses last positional as target" \
+    scp -S "$BIN/ssh-tailscale" user@10.0.0.5:/src ./localdir
+
+reset_case
+# Multiple sources, single target.
+"$BIN/scp-tailscale" src1 src2 src3 user@10.0.0.5:/dst >/dev/null 2>&1
+assert_dbclient_args "scp-tailscale handles multiple sources" \
+    scp -S "$BIN/ssh-tailscale" src1 src2 src3 user@10.0.0.5:/dst
 
 # ---------------------------------------------------------------- summary ---
 echo ""

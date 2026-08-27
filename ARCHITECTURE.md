@@ -107,7 +107,8 @@ sequenceDiagram
 
 ## Security Model
 *   **Key Storage**: Private keys (`id_ed25519`) are stored on the `/mnt/us` partition. Since this is accessible via USB mass storage, physical access to the unlocked Kindle grants access to the private key.
-*   **Known Hosts**: To prevent Man-In-The-Middle (MITM) attacks, host keys are verified against `known_hosts`. Dropbear's default strict checking is used where possible, falling back to user prompts on first connection.
+*   **Known Hosts**: To prevent Man-In-The-Middle (MITM) attacks, host keys are verified against `known_hosts`. Both `ssh` and `ssh-tailscale` run the same writable-`known_hosts` probe and only fall back to `-y` (auto-accept) when `/root/.ssh/known_hosts` cannot be created or written. The Tailscale path in particular used to force `-y` unconditionally, which was a regression: a Tailnet is the worst possible place to skip host-key verification (personal devices, often no unique usernames). Both wrappers now enforce the same posture.
+*   **SCP flag handling**: `scp-tailscale` resolves host aliases from `hosts.conf` locally and threads the alias's port and named key into dropbear-scp's argv. dropbear-scp's existing forwarding logic (`-i`/`-P` -> `-i`/`-p` to its `-S` ssh program, see upstream `scp.c`) carries those flags to `ssh-tailscale`, so the SCP-over-Tailscale path uses the same key and port as a plain `ssh-tailscale` invocation would.
 
 ## Power Management & Keepalive
 Kindle firmware aggressively manages power by invoking the `powerd` daemon after 10 minutes of user inactivity, dimming the screen to a screensaver and shutting off the `wlan0` interface. To ensure long-lived SSH sessions do not drop prematurely:

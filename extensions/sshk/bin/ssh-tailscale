@@ -6,8 +6,33 @@ DBCLIENT="$BINDIR/dbclient"
 CONF="$BINDIR/../hosts.conf"
 
 if [ -z "$1" ]; then
-    echo "Usage: ssh-tailscale [options] user@host [command]"
+    echo "Usage: ssh-tailscale [options] user@host[:port] [command]"
+    echo ""
+    echo "Connects via Tailscale userspace mode (no tun.ko required):"
+    echo "  the SSH session is tunnelled through 'tailscale nc <host> <port>'."
+    echo ""
+    echo "Options:"
+    echo "  -i <name|path>   Identity key. Name -> kindle_<name>_key."
+    echo "  -p <port>        SSH port on the remote host (default 22)."
+    echo "  -L/-R/-l <spec>  Forwarded through to dbclient."
+    echo ""
+    echo "Host aliases live in: $CONF"
     exit 1
+fi
+
+# Known hosts probe (mirrors the plain `ssh` wrapper so Tailscale paths get
+# the same MITM protection as LAN paths). Tailscale tailnets frequently
+# host personal devices without unique usernames, so auto-accepting every
+# host key here would be a regression.
+# Tests force the auto-accept branch via SSHK_TEST_FORCE_AUTO_ACCEPT=1 so
+# the probe can be exercised deterministically from a non-Kindle sandbox.
+OPTS=""
+if [ "${SSHK_TEST_FORCE_AUTO_ACCEPT:-0}" = "1" ]; then
+    OPTS="-y"
+elif [ -w "/root/.ssh/known_hosts" ] || touch /root/.ssh/known_hosts 2>/dev/null; then
+    :
+else
+    OPTS="-y"
 fi
 
 PORT=22
@@ -107,20 +132,19 @@ while [ $i -lt $COUNT ]; do
 done
 
 if [ -z "$HOST" ]; then
-    echo "Error: missing target"
+    echo "sshk: missing target" >&2
     exit 1
 fi
 
 if [ -f "/mnt/us/extensions/tailscale/bin/tailscale" ]; then
     TAILSCALE="/mnt/us/extensions/tailscale/bin/tailscale"
-elif which tailscale >/dev/null 2>&1; then
+elif command -v tailscale >/dev/null 2>&1; then
     TAILSCALE="tailscale"
 else
-    echo "Error: tailscale binary not found at /mnt/us/extensions/tailscale/bin/tailscale or in PATH" >&2
+    echo "sshk: tailscale binary not found at /mnt/us/extensions/tailscale/bin/tailscale or in PATH" >&2
     exit 1
 fi
 
-OPTS="-y"
 if [ $HAS_I -eq 0 ]; then
     KEY="$BINDIR/kindle_native_key"
     if [ ! -f "$KEY" ]; then
