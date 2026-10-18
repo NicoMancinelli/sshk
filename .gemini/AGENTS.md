@@ -19,6 +19,7 @@ When assisting with this project, AI agents **MUST** adhere to the following con
 *   `extensions/sshk/bin/dropbearmulti`: Core statically linked multi-call ARM binary.
 *   `extensions/sshk/bin/dbclient`: Wrapper to invoke the SSH client applet.
 *   `extensions/sshk/bin/dropbearkey`: Wrapper to invoke the key generation applet.
+*   `extensions/sshk/bin/sshk-common.sh`: Shared POSIX helpers (known_hosts probe, alias lookup, key mapping, screensaver trap) sourced by the client wrappers. Any change here affects `ssh`, `ssh-tailscale` and `scp-tailscale` at once.
 *   `extensions/sshk/bin/ssh`: Main SSH wrapper, injects key paths and handles known_hosts.
 *   `extensions/sshk/bin/ssh-tailscale`: SSH wrapper that proxies connections through `tailscale nc`.
 *   `extensions/sshk/bin/genkey.sh`: KUAL script to generate an ed25519 key pair.
@@ -28,7 +29,7 @@ When assisting with this project, AI agents **MUST** adhere to the following con
 
 ## Common Patterns
 
-*   **Adding a new CLI tool**: Create a new wrapper script in `extensions/sshk/bin/` (e.g., `scp`). Ensure it is executable. It will automatically be in the PATH if `install.sh` was run.
+*   **Adding a new CLI tool**: Create a new wrapper script in `extensions/sshk/bin/` (e.g., `scp`). Ensure it is executable. It will automatically be in the PATH if `install.sh` was run. If it parses `-i`/`-p`/host aliases or needs the known_hosts probe, source `sshk-common.sh` (see `ssh`) rather than copying the logic.
 *   **Adding a new KUAL menu action**: Create a new `.sh` script in `extensions/sshk/bin/`. Add a corresponding JSON object to the `items` array in `extensions/sshk/menu.json`.
 *   **Displaying output**:
     *   If running inside `kterm`: Standard `echo` or `printf` to stdout.

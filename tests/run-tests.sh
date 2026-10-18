@@ -25,7 +25,9 @@ trap cleanup EXIT INT TERM HUP
 
 BIN="$SANDBOX/bin"
 mkdir -p "$BIN"
-for wrapper in ssh ssh-tailscale scp scp-tailscale; do
+# ssh / ssh-tailscale / scp-tailscale source sshk-common.sh from BINDIR, so it
+# has to be staged alongside them.
+for wrapper in ssh ssh-tailscale scp scp-tailscale sshk-common.sh; do
     cp "$ROOT/extensions/sshk/bin/$wrapper" "$BIN/" || exit 1
 done
 cp "$ROOT"/tests/stubs/* "$BIN/" || exit 1
@@ -232,6 +234,108 @@ rm -rf "$SEALED"
 # PATH was sealed above; the wrapper's PATH was already exported at sandbox
 # setup, so subsequent calls still see $BIN first.
 
+echo "== shared helpers (sshk-common.sh) =="
+
+# The known_hosts probe, the screensaver calls and the alias lookup now live in
+# exactly one file. These checks fail if a future edit reintroduces a
+# per-wrapper copy — which is how the two SSH wrappers drifted apart before
+# v1.5 (ssh verified host keys while ssh-tailscale auto-accepted them).
+LIB="$ROOT/extensions/sshk/bin/sshk-common.sh"
+if [ -f "$LIB" ]; then
+    ok "shared helper library sshk-common.sh is shipped"
+else
+    fail "shared helper library sshk-common.sh is shipped" "missing $LIB"
+fi
+
+for fn in sshk_known_hosts_flags sshk_map_identity sshk_lookup_alias \
+          sshk_native_key_opts sshk_inhibit_screensaver; do
+    if [ -f "$LIB" ] && grep -q "^$fn()" "$LIB"; then
+        ok "sshk-common.sh defines $fn"
+    else
+        fail "sshk-common.sh defines $fn" "no '^$fn()' definition in $LIB"
+    fi
+done
+
+for wrapper in ssh ssh-tailscale scp-tailscale; do
+    if grep -q 'sshk-common.sh' "$ROOT/extensions/sshk/bin/$wrapper"; then
+        ok "$wrapper sources the shared library"
+    else
+        fail "$wrapper sources the shared library" "no sshk-common.sh reference"
+    fi
+done
+
+# Single-source-of-truth guards.
+_count=$(grep -rl 'touch /root/.ssh/known_hosts' "$ROOT/extensions/sshk/bin" | wc -l)
+if [ "$_count" = "1" ]; then
+    ok "known_hosts probe defined in exactly one file"
+else
+    fail "known_hosts probe defined in exactly one file" \
+        "found in $_count files: $(grep -rl 'touch /root/.ssh/known_hosts' "$ROOT/extensions/sshk/bin" | tr '\n' ' ')"
+fi
+_count=$(grep -rl 'preventScreenSaver' "$ROOT/extensions/sshk/bin" | wc -l)
+if [ "$_count" = "1" ]; then
+    ok "screensaver calls defined in exactly one file"
+else
+    fail "screensaver calls defined in exactly one file" \
+        "found in $_count files: $(grep -rl 'preventScreenSaver' "$ROOT/extensions/sshk/bin" | tr '\n' ' ')"
+fi
+
+# Direct unit checks of the helpers (sourced in a subshell, bypassing the
+# wrappers) so the shared code is covered on its own terms.
+if [ -f "$LIB" ]; then
+    _out=$(SSHK_TEST_FORCE_AUTO_ACCEPT=1
+           . "$LIB"
+           sshk_known_hosts_flags)
+    if [ "$_out" = "-y" ]; then
+        ok "sshk_known_hosts_flags honours the forced auto-accept probe"
+    else
+        fail "sshk_known_hosts_flags honours the forced auto-accept probe" "got: $_out"
+    fi
+
+    _out=$(. "$LIB"; sshk_map_identity work /base)
+    if [ "$_out" = "/base/kindle_work_key" ]; then
+        ok "sshk_map_identity expands a bare key name"
+    else
+        fail "sshk_map_identity expands a bare key name" "got: $_out"
+    fi
+
+    _out=$(. "$LIB"; sshk_map_identity /abs/key /base)
+    if [ "$_out" = "/abs/key" ]; then
+        ok "sshk_map_identity passes an absolute path through unchanged"
+    else
+        fail "sshk_map_identity passes an absolute path through unchanged" "got: $_out"
+    fi
+
+    reset_case
+    write_hosts "alpha admin@10.0.0.1\nalias2 root@h.example:2222 km\n"
+    _out=$(. "$LIB"
+           sshk_lookup_alias "$HOSTS_CONF" alias2 && \
+           printf '%s|%s|%s' "$SSHK_ALIAS_HOST" "$SSHK_ALIAS_PORT" "$SSHK_ALIAS_KEY")
+    if [ "$_out" = "root@h.example|2222|km" ]; then
+        ok "sshk_lookup_alias splits host, port and key"
+    else
+        fail "sshk_lookup_alias splits host, port and key" "got: $_out"
+    fi
+
+    _rc=$(. "$LIB"; sshk_lookup_alias "$HOSTS_CONF" nosuch; echo $?)
+    if [ "$_rc" = "1" ]; then
+        ok "sshk_lookup_alias reports a miss with rc 1"
+    else
+        fail "sshk_lookup_alias reports a miss with rc 1" "got rc: $_rc"
+    fi
+
+    # An alias whose target contains shell metacharacters must round-trip as
+    # data through the shared lookup (the ssh-menu path relies on this).
+    reset_case
+    write_hosts "evil host;echoPWNED\n"
+    _out=$(. "$LIB"; sshk_lookup_alias "$HOSTS_CONF" evil && printf '%s' "$SSHK_ALIAS_HOST")
+    if [ "$_out" = "host;echoPWNED" ]; then
+        ok "sshk_lookup_alias returns metacharacter targets verbatim"
+    else
+        fail "sshk_lookup_alias returns metacharacter targets verbatim" "got: $_out"
+    fi
+fi
+
 echo "== scp wrappers =="
 
 reset_case
@@ -318,7 +422,7 @@ echo "== ssh-menu wrapper =="
 
 MENU_SANDBOX="$SANDBOX/menu"
 mkdir -p "$MENU_SANDBOX/bin" "$MENU_SANDBOX"
-for f in ssh-menu ssh-tailscale; do
+for f in ssh-menu ssh-tailscale sshk-common.sh; do
     cp "$ROOT/extensions/sshk/bin/$f" "$MENU_SANDBOX/bin/"
     chmod +x "$MENU_SANDBOX/bin/$f"
 done

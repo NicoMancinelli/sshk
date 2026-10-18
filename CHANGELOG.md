@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Changed
+- **Shared shell library (`sshk-common.sh`)**: the known_hosts probe, the `hosts.conf` alias lookup, the `-i <name>` → `kindle_<name>_key` mapping, the first-run native-key bootstrap and the screensaver trap are now defined once and sourced by `ssh`, `ssh-tailscale` and `scp-tailscale`. Each wrapper previously carried its own copy, which is exactly how `ssh` and `ssh-tailscale` drifted apart before the v1.5 host-key fix. Command-line behaviour is unchanged.
+
+### Fixed
+- **`ssh` / `ssh-tailscale` / `scp-tailscale`**: resolve their own directory with pure POSIX parameter expansion instead of the external `dirname` command, so the wrappers still locate their sidecar files (including the shared library) when `PATH` is empty or `dirname` is unavailable. This is what the existing sealed-`PATH` `ssh-tailscale` test exercises.
+
+### Tests
+- Functional tests grow from 47 to **64 assertions**. New coverage:
+  - the shared library ships and defines each helper (`sshk_known_hosts_flags`, `sshk_map_identity`, `sshk_lookup_alias`, `sshk_native_key_opts`, `sshk_inhibit_screensaver`).
+  - `ssh`, `ssh-tailscale` and `scp-tailscale` all source it.
+  - the known_hosts probe and the screensaver calls are defined in exactly one file, so a per-wrapper copy cannot creep back in.
+  - direct unit checks of `sshk_known_hosts_flags` (forced auto-accept), `sshk_map_identity` (bare name vs absolute path) and `sshk_lookup_alias` (host/port/key split, miss returns rc 1, metacharacter targets round-trip verbatim).
+
 ## [1.5] - 2026-08-27
 
 ### Security

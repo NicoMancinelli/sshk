@@ -24,6 +24,7 @@ extensions/sshk/
 │   ├── genkey.sh               # KUAL script: Generates ed25519 keys
 │   ├── install.sh              # KUAL script: Injects PATH and creates known_hosts
 │   ├── showkey.sh              # KUAL script: Prints public key to screen
+│   ├── sshk-common.sh          # Shared helpers sourced by the client wrappers
 │   ├── ssh                     # Main SSH wrapper (handles key, hosts, options)
 │   ├── ssh-tailscale           # Tailscale SSH wrapper (ProxyCommand via tailscale nc)
 │   └── uninstall.sh            # KUAL script: Removes PATH modifications
@@ -39,8 +40,19 @@ extensions/sshk/
 Because the Kindle's USB partition uses FAT32 and cannot store symbolic links, we cannot simply `ln -s dropbearmulti ssh`. Instead, we create small POSIX shell scripts (`dbclient`, `dropbearkey`, `ssh`, `scp` - note: `scp` logic mentioned in prompt, assuming conceptually similar although not present in dir listing) that explicitly execute `dropbearmulti` with the correct applet argument.
 
 ### `ssh` and `ssh-tailscale` Wrappers
-*   **`ssh`**: A wrapper around `dbclient` that automatically injects the path to the private key (`/mnt/us/extensions/sshk/id_ed25519`) and specifies the `known_hosts` file, providing an OpenSSH-like command-line experience.
-*   **`ssh-tailscale`**: Builds upon the standard `ssh` wrapper by appending `-J` (ProxyCommand) equivalent arguments, routing the SSH connection through `tailscale nc <host> <port>`.
+Both wrappers are built on the shared helper library (`sshk-common.sh`), which owns the known_hosts probe, the `hosts.conf` alias lookup, the `-i <name>` → `kindle_<name>_key` mapping, the first-run native-key bootstrap and the screensaver trap. Keeping this in one file is deliberate: before v1.5 the two wrappers had drifted, so `ssh` verified host keys while `ssh-tailscale` auto-accepted them.
+*   **`ssh`**: A wrapper around `dbclient` that injects the path to the private key and relies on the shared known_hosts handling, providing an OpenSSH-like command-line experience.
+*   **`ssh-tailscale`**: Reuses the shared parser, then appends `-J` (ProxyCommand) arguments, routing the SSH connection through `tailscale nc <host> <port>`.
+
+### `sshk-common.sh`
+A POSIX shell library sourced (never executed) by `ssh`, `ssh-tailscale` and `scp-tailscale`. It exposes:
+*   `sshk_known_hosts_flags` — emits `-y` only when `/root/.ssh/known_hosts` cannot be created or written.
+*   `sshk_identity_path` / `sshk_map_identity` — expand a bare key name to `kindle_<name>_key`, or pass an absolute path through.
+*   `sshk_lookup_alias` — resolve a `hosts.conf` alias into host/port/key without `eval`.
+*   `sshk_native_key_opts` — bootstrap the default key on first run and return its `-i` flag.
+*   `sshk_inhibit_screensaver` / `sshk_restore_screensaver` — the `preventScreenSaver` trap.
+
+Helpers that return more than one value do so through globals, so callers must invoke them directly rather than inside a `$(...)` substitution.
 
 ### Install/Uninstall Scripts
 *   **`install.sh`**: Remounts the rootfs as read-write (`mntroot rw`), checks if `/root/.ssh/known_hosts` exists, creates it if necessary, symlinks it if needed, and modifies the `kterm.sh` startup script to prepend `/mnt/us/extensions/sshk/bin` to the `PATH`.
@@ -107,7 +119,7 @@ sequenceDiagram
 
 ## Security Model
 *   **Key Storage**: Private keys (`id_ed25519`) are stored on the `/mnt/us` partition. Since this is accessible via USB mass storage, physical access to the unlocked Kindle grants access to the private key.
-*   **Known Hosts**: To prevent Man-In-The-Middle (MITM) attacks, host keys are verified against `known_hosts`. Both `ssh` and `ssh-tailscale` run the same writable-`known_hosts` probe and only fall back to `-y` (auto-accept) when `/root/.ssh/known_hosts` cannot be created or written. The Tailscale path in particular used to force `-y` unconditionally, which was a regression: a Tailnet is the worst possible place to skip host-key verification (personal devices, often no unique usernames). Both wrappers now enforce the same posture.
+*   **Known Hosts**: To prevent Man-In-The-Middle (MITM) attacks, host keys are verified against `known_hosts`. Both `ssh` and `ssh-tailscale` run the same writable-`known_hosts` probe and only fall back to `-y` (auto-accept) when `/root/.ssh/known_hosts` cannot be created or written. The Tailscale path in particular used to force `-y` unconditionally, which was a regression: a Tailnet is the worst possible place to skip host-key verification (personal devices, often no unique usernames). Both wrappers now enforce the same posture, and that probe is a single function (`sshk_known_hosts_flags` in `sshk-common.sh`), so the posture cannot drift apart again.
 *   **SCP flag handling**: `scp-tailscale` resolves host aliases from `hosts.conf` locally and threads the alias's port and named key into dropbear-scp's argv. dropbear-scp's existing forwarding logic (`-i`/`-P` -> `-i`/`-p` to its `-S` ssh program, see upstream `scp.c`) carries those flags to `ssh-tailscale`, so the SCP-over-Tailscale path uses the same key and port as a plain `ssh-tailscale` invocation would.
 *   **Server authorization (`authorize-server.sh`)**: the public key is delivered to the remote host via SSH stdin and a heredoc-based script body, not interpolated into the remote command line. A key whose comment field happens to contain shell metacharacters cannot trigger arbitrary remote shell execution, because the key text is now data, not code.
 *   **Menu alias lookup (`ssh-menu`)**: alias selection no longer uses `eval`. The alias list is held in a newline-separated variable and looked up with `sed -n "${n}p"`, so a `hosts.conf` line whose alias contains shell metacharacters is treated as data when the user picks it.
