@@ -41,18 +41,21 @@ Because the Kindle's USB partition uses FAT32 and cannot store symbolic links, w
 
 ### `ssh` and `ssh-tailscale` Wrappers
 Both wrappers are built on the shared helper library (`sshk-common.sh`), which owns the known_hosts probe, the `hosts.conf` alias lookup, the `-i <name>` → `kindle_<name>_key` mapping, the first-run native-key bootstrap and the screensaver trap. Keeping this in one file is deliberate: before v1.5 the two wrappers had drifted, so `ssh` verified host keys while `ssh-tailscale` auto-accepted them.
-*   **`ssh`**: A wrapper around `dbclient` that injects the path to the private key and relies on the shared known_hosts handling, providing an OpenSSH-like command-line experience.
+*   **`ssh`**: A wrapper around `dbclient` that injects the path to the private key and relies on the shared known_hosts handling, providing an OpenSSH-like command-line experience. Run with no arguments on a terminal it hands off to `ssh-menu` (the picker); `-h`/`--help` prints a help block that lists the saved aliases.
 *   **`ssh-tailscale`**: Reuses the shared parser, then appends `-J` (ProxyCommand) arguments, routing the SSH connection through `tailscale nc <host> <port>`.
 
 ### `sshk-common.sh`
 A POSIX shell library sourced (never executed) by `ssh`, `ssh-tailscale` and `scp-tailscale`. It exposes:
 *   `sshk_known_hosts_flags` — emits `-y` only when `/root/.ssh/known_hosts` cannot be created or written.
 *   `sshk_identity_path` / `sshk_map_identity` — expand a bare key name to `kindle_<name>_key`, or pass an absolute path through.
-*   `sshk_lookup_alias` — resolve a `hosts.conf` alias into host/port/key without `eval`.
+*   `sshk_lookup_alias` — resolve a `hosts.conf` alias into host/port/key without `eval`, in a single `awk` pass (it splits `host:port` too).
+*   `sshk_alias_names` — list the aliases in `hosts.conf`, used by the wrappers' `-h` output.
 *   `sshk_native_key_opts` — bootstrap the default key on first run and return its `-i` flag.
 *   `sshk_inhibit_screensaver` / `sshk_restore_screensaver` — the `preventScreenSaver` trap.
 
 Helpers that return more than one value do so through globals, so callers must invoke them directly rather than inside a `$(...)` substitution.
+
+The library (and the wrappers, and `ssh-menu`) deliberately do their work in as few forks as possible — a commodity Kindle has a slow CPU and each `exec` is expensive on the hot connect path. `sshk_lookup_alias` used to spawn `grep|grep|awk` plus two more `awk`s per invocation; it now forks once. `ssh-menu` parses `hosts.conf` with pure shell parameter expansion rather than four processes per line.
 
 ### Install/Uninstall Scripts
 *   **`install.sh`**: Remounts the rootfs as read-write (`mntroot rw`), checks if `/root/.ssh/known_hosts` exists, creates it if necessary, symlinks it if needed, and modifies the `kterm.sh` startup script to prepend `/mnt/us/extensions/sshk/bin` to the `PATH`.

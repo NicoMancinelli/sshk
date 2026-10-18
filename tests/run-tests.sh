@@ -248,7 +248,7 @@ else
 fi
 
 for fn in sshk_known_hosts_flags sshk_map_identity sshk_lookup_alias \
-          sshk_native_key_opts sshk_inhibit_screensaver; do
+          sshk_alias_names sshk_native_key_opts sshk_inhibit_screensaver; do
     if [ -f "$LIB" ] && grep -q "^$fn()" "$LIB"; then
         ok "sshk-common.sh defines $fn"
     else
@@ -335,6 +335,58 @@ if [ -f "$LIB" ]; then
         fail "sshk_lookup_alias returns metacharacter targets verbatim" "got: $_out"
     fi
 fi
+
+echo "== help & first-run ergonomics =="
+
+reset_case
+write_hosts "myserver admin@192.168.1.10\nwork dev@work.example.com:2222\n"
+
+# -h/--help are handled by the wrapper itself (never forwarded to dbclient),
+# exit 0, and list the user's saved aliases so help doubles as a host list.
+"$BIN/ssh" -h > "$SANDBOX/help.txt" 2>&1
+_rc=$?
+assert_rc "ssh -h exits 0" "0" "$_rc"
+if grep -q "Usage: ssh" "$SANDBOX/help.txt"; then
+    ok "ssh -h prints usage"
+else
+    fail "ssh -h prints usage" "output was:" "$(cat "$SANDBOX/help.txt")"
+fi
+if grep -q "myserver" "$SANDBOX/help.txt" && grep -q "work" "$SANDBOX/help.txt"; then
+    ok "ssh -h lists saved aliases"
+else
+    fail "ssh -h lists saved aliases" "output was:" "$(cat "$SANDBOX/help.txt")"
+fi
+if [ ! -s "$SSHK_TEST_LOG" ]; then
+    ok "ssh -h does not invoke dbclient"
+else
+    fail "ssh -h does not invoke dbclient" "dbclient log: $(cat "$SSHK_TEST_LOG")"
+fi
+
+"$BIN/ssh" --help >/dev/null 2>&1
+assert_rc "ssh --help exits 0" "0" "$?"
+
+# No target and no terminal -> usage + exit 1. The interactive picker is only
+# offered on a tty (and only when ssh-menu is installed next to the wrapper),
+# so scripted/no-tty callers still get a predictable error.
+"$BIN/ssh" < /dev/null > "$SANDBOX/noargs.txt" 2>&1
+assert_rc "ssh with no args (no tty) exits 1" "1" "$?"
+if grep -q "Usage: ssh" "$SANDBOX/noargs.txt"; then
+    ok "ssh with no args prints usage"
+else
+    fail "ssh with no args prints usage" "output was:" "$(cat "$SANDBOX/noargs.txt")"
+fi
+if grep -q 'exec "$BINDIR/ssh-menu"' "$ROOT/extensions/sshk/bin/ssh" && \
+   grep -q '\[ -t 0 \]' "$ROOT/extensions/sshk/bin/ssh"; then
+    ok "ssh offers the quick-connect picker on a terminal"
+else
+    fail "ssh offers the quick-connect picker on a terminal" \
+        "expected '[ -t 0 ]' + 'exec \"\$BINDIR/ssh-menu\"' in the ssh wrapper"
+fi
+
+"$BIN/ssh-tailscale" -h >/dev/null 2>&1
+assert_rc "ssh-tailscale -h exits 0" "0" "$?"
+"$BIN/scp-tailscale" -h >/dev/null 2>&1
+assert_rc "scp-tailscale -h exits 0" "0" "$?"
 
 echo "== scp wrappers =="
 
@@ -481,6 +533,26 @@ if [ ! -s "$SSHK_TEST_LOG" ]; then
 else
     fail "ssh-menu quits on q" "ssh was invoked with: $(cat "$SSHK_TEST_LOG")"
 fi
+
+# The menu must render the saved aliases with a stable index (so one keypress
+# connects) and print a metacharacter alias verbatim, not evaluated.
+_out=$(printf 'q\n' | PATH="$MENU_SANDBOX/bin:$PATH" SSHK_TEST_LOG="$SSHK_TEST_LOG" "$MENU_SANDBOX/bin/ssh-menu" 2>&1)
+case "$_out" in
+    *"[1] alpha"*) ok "ssh-menu renders saved aliases with an index" ;;
+    *) fail "ssh-menu renders saved aliases with an index" "output:" "$_out" ;;
+esac
+case "$_out" in
+    *"'evil;rm-rf/tmp'"*) ok "ssh-menu renders metacharacter aliases verbatim" ;;
+    *) fail "ssh-menu renders metacharacter aliases verbatim" "output:" "$_out" ;;
+esac
+
+# A first-time user (no hosts.conf entries) should be told how to add one.
+rm -f "$MENU_SANDBOX/hosts.conf"
+_out=$(printf 'q\n' | PATH="$MENU_SANDBOX/bin:$PATH" SSHK_TEST_LOG="$SSHK_TEST_LOG" "$MENU_SANDBOX/bin/ssh-menu" 2>&1)
+case "$_out" in
+    *"No saved hosts"*) ok "ssh-menu guides an empty hosts.conf" ;;
+    *) fail "ssh-menu guides an empty hosts.conf" "output:" "$_out" ;;
+esac
 
 echo "== server scripts =="
 

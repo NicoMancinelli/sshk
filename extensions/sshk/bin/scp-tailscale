@@ -25,7 +25,7 @@ CONF="$BINDIR/../hosts.conf"
 # shellcheck disable=SC1091  # resolved via $BINDIR at runtime; linted standalone
 . "$BINDIR/sshk-common.sh"
 
-if [ $# -lt 1 ]; then
+usage() {
     echo "Usage: scp-tailscale [options] source... target"
     echo ""
     echo "Examples:"
@@ -33,9 +33,31 @@ if [ $# -lt 1 ]; then
     echo "  scp-tailscale -P 2223 -i work file.txt user@host:/path/"
     echo "  scp-tailscale file.txt work_server         # alias from hosts.conf"
     echo ""
-    echo "Host aliases live in: $CONF"
+    echo "Options:"
+    echo "  -P <port>        Remote SSH port."
+    echo "  -i <name|path>   Identity key. Name -> kindle_<name>_key."
+    echo "  -h, --help       Show this help."
+    echo ""
+    _names=$(sshk_alias_names "$CONF")
+    if [ -n "$_names" ]; then
+        echo "Saved aliases (from $CONF):"
+        printf '%s\n' "$_names" | sed 's/^/  /'
+    else
+        echo "No saved aliases yet - run 'ssh-menu' (or 'sshk') to add one."
+    fi
+}
+
+if [ $# -lt 1 ]; then
+    usage
     exit 1
 fi
+
+case "$1" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
 
 # Walk argv manually: keep every flag together with its argument so we can
 # rebuild the dropbear-scp argv without losing -i / -P / -r etc.

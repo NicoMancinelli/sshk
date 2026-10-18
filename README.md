@@ -6,7 +6,7 @@ Normally, Kindle devices do not have an SSH client installed, and compiling one 
 
 ## Features
 
-- **Interactive Quick-Connect Menu**: Type `sshk` in kterm to open a numbered connection menu — connect with 1 keypress without typing long hostnames.
+- **Interactive Quick-Connect Menu**: Type `ssh` (or `sshk`) in kterm to open a numbered connection menu — connect with 1 keypress without typing long hostnames.
 - **WiFi Keepalive & Sleep Inhibitor**: Automatically stops the Kindle from entering sleep/screensaver mode while an SSH session is active, preventing dropped connections.
 - **Inbound SSH Server (2-in-1)**: Start/Stop a Dropbear SSH server directly from KUAL on port 2222 to connect *into* your Kindle from your PC.
 - **Landscape Terminal Preset**: Open `kterm` pre-rotated into landscape mode with optimized font size from KUAL.
@@ -64,6 +64,10 @@ Want to connect to your remote server without typing a password every time?
 
 Open `kterm` from KUAL and run:
 
+- **Simplest of all — just type `ssh`**: with no arguments it opens the
+  quick-connect menu (or prints help when there is no terminal).
+- **If you ever get stuck, add `-h`** (e.g. `ssh -h`, `ssh-tailscale -h`,
+  `scp-tailscale -h`) for help that also lists your saved aliases.
 - **For standard SSH connections**:
   ```bash
   ssh user@host

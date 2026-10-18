@@ -9,7 +9,11 @@
 # (e.g. ssh-tailscale auto-accepting host keys while ssh verified them).
 #
 # The Kindle runs BusyBox /bin/sh, so everything here is POSIX and avoids
-# bashisms. Callers set BINDIR (and CONF for the alias helper) before sourcing.
+# bashisms. Callers set BINDIR (and CONF for the alias helpers) before sourcing.
+#
+# These run on the hot path of every connection, and spawning a process on a
+# Kindle is expensive, so the helpers deliberately do their work in as few
+# forks as possible (ideally one awk, or none at all).
 #
 # Functions that "return" more than one value (sshk_lookup_alias,
 # sshk_native_key_opts) do so by assigning globals. They must therefore be
@@ -52,6 +56,20 @@ sshk_map_identity() {
     esac
 }
 
+# sshk_alias_names CONF
+#   Print the alias names defined in CONF, one per line, in file order.
+#   Comments and blank lines are skipped. Used to make the usage/help text
+#   self-documenting so a user can see their saved hosts without opening
+#   hosts.conf.
+sshk_alias_names() {
+    [ -f "$1" ] || return 0
+    awk '
+        /^[[:space:]]*#/ { next }
+        /^[[:space:]]*$/ { next }
+        { print $1 }
+    ' "$1"
+}
+
 # sshk_lookup_alias CONF NAME
 #   Look NAME up in CONF (hosts.conf). On a match, set:
 #     SSHK_ALIAS_HOST  target with any :port stripped (user@host / host)
@@ -59,27 +77,40 @@ sshk_map_identity() {
 #     SSHK_ALIAS_KEY   key name from the third field, or empty
 #   and return 0. Return 1 when CONF is missing or NAME has no entry. Comment
 #   and blank lines are skipped.
-#   NAME is matched as data (`awk -v a=...`), never eval'd, so an alias whose
-#   text contains shell metacharacters cannot execute code when selected.
+#   NAME is matched as data (`awk -v a=...` string compare), never eval'd, so
+#   an alias whose text contains shell metacharacters cannot execute code.
+#   A single awk pass does both the match and the host:port split, replacing
+#   the previous grep|grep|awk plus two awk invocations.
+#   The `|` separator is safe: a user@host target or key name cannot contain
+#   one.
 sshk_lookup_alias() {
     _conf="$1"
     _name="$2"
     [ -f "$_conf" ] || return 1
-    _match=$(grep -v '^[[:space:]]*#' "$_conf" | grep -v '^[[:space:]]*$' | awk -v a="$_name" '$1 == a {print; exit}')
-    [ -n "$_match" ] || return 1
-    SSHK_ALIAS_HOST=$(printf '%s\n' "$_match" | awk '{print $2}')
-    # SSHK_ALIAS_KEY / SSHK_ALIAS_PORT are this function's return values; the
-    # sourcing wrapper reads them, which shellcheck cannot see from here.
-    # shellcheck disable=SC2034
-    SSHK_ALIAS_KEY=$(printf '%s\n' "$_match" | awk '{print $3}')
-    SSHK_ALIAS_PORT=""
-    case "$SSHK_ALIAS_HOST" in
-        *:*)
-            # shellcheck disable=SC2034
-            SSHK_ALIAS_PORT="${SSHK_ALIAS_HOST##*:}"
-            SSHK_ALIAS_HOST="${SSHK_ALIAS_HOST%:*}"
-            ;;
-    esac
+    _line=$(awk -v a="$_name" '
+        /^[[:space:]]*#/ { next }
+        /^[[:space:]]*$/ { next }
+        $1 == a {
+            _host = $2
+            _port = ""
+            if (_host ~ /:/) {
+                _port = _host
+                sub(/^.*:/, "", _port)
+                sub(/:[^:]*$/, "", _host)
+            }
+            print _host "|" _port "|" $3
+            exit
+        }
+    ' "$_conf")
+    [ -n "$_line" ] || return 1
+    SSHK_ALIAS_HOST="${_line%%|*}"
+    _rest="${_line#*|}"
+    SSHK_ALIAS_PORT="${_rest%%|*}"
+    SSHK_ALIAS_KEY="${_rest#*|}"
+    # The three values above are this function's return values; the sourcing
+    # wrapper reads them after we return, which shellcheck cannot see. The
+    # no-op reference keeps SC2034 from firing.
+    : "$SSHK_ALIAS_HOST" "$SSHK_ALIAS_PORT" "$SSHK_ALIAS_KEY"
     return 0
 }
 
@@ -91,7 +122,6 @@ sshk_lookup_alias() {
 sshk_native_key_opts() {
     _bindir="$1"
     _key="$_bindir/kindle_native_key"
-    # shellcheck disable=SC2034  # read by the sourcing wrapper
     SSHK_NATIVE_OPTS=""
     if [ ! -f "$_key" ]; then
         echo "sshk: First run detected - generating default SSH key..."
@@ -101,9 +131,10 @@ sshk_native_key_opts() {
         fi
     fi
     if [ -f "$_key" ]; then
-        # shellcheck disable=SC2034  # read by the sourcing wrapper
         SSHK_NATIVE_OPTS="-i $_key"
     fi
+    # Return value read by the sourcing wrapper; see sshk_lookup_alias.
+    : "$SSHK_NATIVE_OPTS"
 }
 
 # sshk_inhibit_screensaver

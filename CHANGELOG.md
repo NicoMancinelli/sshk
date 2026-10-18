@@ -6,18 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **`ssh` with no arguments opens the quick-connect menu.** On a terminal (and when `ssh-menu` sits next to the wrapper) typing just `ssh` now shows the numbered picker, so the whole tool can be driven by one word. Non-tty/scripted callers still get usage and exit 1, so automation is unaffected.
+- **`-h` / `--help` on `ssh`, `ssh-tailscale` and `scp-tailscale`.** Help is handled by the wrapper itself (never forwarded to `dbclient`/`scp`) and lists the aliases saved in `hosts.conf`, so help doubles as a host list. When `hosts.conf` is empty it points the user at `ssh-menu` instead.
+
 ### Changed
 - **Shared shell library (`sshk-common.sh`)**: the known_hosts probe, the `hosts.conf` alias lookup, the `-i <name>` → `kindle_<name>_key` mapping, the first-run native-key bootstrap and the screensaver trap are now defined once and sourced by `ssh`, `ssh-tailscale` and `scp-tailscale`. Each wrapper previously carried its own copy, which is exactly how `ssh` and `ssh-tailscale` drifted apart before the v1.5 host-key fix. Command-line behaviour is unchanged.
+- **Faster on device**: the alias lookup and the menu rendering fork far fewer processes, which matters on a Kindle's slow CPU. `sshk_lookup_alias` now resolves the matching line *and* splits `host:port` in a single `awk` (previously `grep|grep|awk` plus two more `awk` invocations), and `ssh-menu` parses `hosts.conf` with pure shell parameter expansion (previously four processes per line). Measured with `strace`: an alias connection drops from **10 to 6** `execve` calls, and rendering a 12-alias menu from **55 to 7**.
+- **Simpler empty state**: `ssh-menu` now tells a first-time user to press `[a]` to add a host or `[c]` to connect without saving, instead of showing a bare "no saved hosts" line.
 
 ### Fixed
-- **`ssh` / `ssh-tailscale` / `scp-tailscale`**: resolve their own directory with pure POSIX parameter expansion instead of the external `dirname` command, so the wrappers still locate their sidecar files (including the shared library) when `PATH` is empty or `dirname` is unavailable. This is what the existing sealed-`PATH` `ssh-tailscale` test exercises.
+- **`ssh` / `ssh-tailscale` / `scp-tailscale` / `ssh-menu`**: resolve their own directory with pure POSIX parameter expansion instead of the external `dirname` command, so they still locate their sidecar files (including the shared library) when `PATH` is empty or `dirname` is unavailable. This is what the existing sealed-`PATH` `ssh-tailscale` test exercises.
 
 ### Tests
-- Functional tests grow from 47 to **64 assertions**. New coverage:
-  - the shared library ships and defines each helper (`sshk_known_hosts_flags`, `sshk_map_identity`, `sshk_lookup_alias`, `sshk_native_key_opts`, `sshk_inhibit_screensaver`).
+- Functional tests grow from 47 to **78 assertions**. New coverage:
+  - the shared library ships and defines each helper (`sshk_known_hosts_flags`, `sshk_map_identity`, `sshk_lookup_alias`, `sshk_alias_names`, `sshk_native_key_opts`, `sshk_inhibit_screensaver`).
   - `ssh`, `ssh-tailscale` and `scp-tailscale` all source it.
   - the known_hosts probe and the screensaver calls are defined in exactly one file, so a per-wrapper copy cannot creep back in.
   - direct unit checks of `sshk_known_hosts_flags` (forced auto-accept), `sshk_map_identity` (bare name vs absolute path) and `sshk_lookup_alias` (host/port/key split, miss returns rc 1, metacharacter targets round-trip verbatim).
+  - `ssh -h`/`--help`, `ssh-tailscale -h` and `scp-tailscale -h` exit 0, print usage and never invoke `dbclient`.
+  - `ssh -h` lists the saved aliases; `ssh` with no arguments and no terminal prints usage and exits 1; the tty-only picker branch is present.
+  - `ssh-menu` renders saved aliases with a stable index, renders a metacharacter alias verbatim, and guides an empty `hosts.conf`.
 
 ## [1.5] - 2026-08-27
 
