@@ -25,7 +25,9 @@ trap cleanup EXIT INT TERM HUP
 
 BIN="$SANDBOX/bin"
 mkdir -p "$BIN"
-for wrapper in ssh ssh-tailscale scp scp-tailscale; do
+# ssh / ssh-tailscale / scp-tailscale source sshk-common.sh from BINDIR, so it
+# has to be staged alongside them.
+for wrapper in ssh ssh-tailscale scp scp-tailscale sshk-common.sh; do
     cp "$ROOT/extensions/sshk/bin/$wrapper" "$BIN/" || exit 1
 done
 cp "$ROOT"/tests/stubs/* "$BIN/" || exit 1
@@ -232,6 +234,160 @@ rm -rf "$SEALED"
 # PATH was sealed above; the wrapper's PATH was already exported at sandbox
 # setup, so subsequent calls still see $BIN first.
 
+echo "== shared helpers (sshk-common.sh) =="
+
+# The known_hosts probe, the screensaver calls and the alias lookup now live in
+# exactly one file. These checks fail if a future edit reintroduces a
+# per-wrapper copy — which is how the two SSH wrappers drifted apart before
+# v1.5 (ssh verified host keys while ssh-tailscale auto-accepted them).
+LIB="$ROOT/extensions/sshk/bin/sshk-common.sh"
+if [ -f "$LIB" ]; then
+    ok "shared helper library sshk-common.sh is shipped"
+else
+    fail "shared helper library sshk-common.sh is shipped" "missing $LIB"
+fi
+
+for fn in sshk_known_hosts_flags sshk_map_identity sshk_lookup_alias \
+          sshk_alias_names sshk_native_key_opts sshk_inhibit_screensaver; do
+    if [ -f "$LIB" ] && grep -q "^$fn()" "$LIB"; then
+        ok "sshk-common.sh defines $fn"
+    else
+        fail "sshk-common.sh defines $fn" "no '^$fn()' definition in $LIB"
+    fi
+done
+
+for wrapper in ssh ssh-tailscale scp-tailscale; do
+    if grep -q 'sshk-common.sh' "$ROOT/extensions/sshk/bin/$wrapper"; then
+        ok "$wrapper sources the shared library"
+    else
+        fail "$wrapper sources the shared library" "no sshk-common.sh reference"
+    fi
+done
+
+# Single-source-of-truth guards.
+_count=$(grep -rl 'touch /root/.ssh/known_hosts' "$ROOT/extensions/sshk/bin" | wc -l)
+if [ "$_count" = "1" ]; then
+    ok "known_hosts probe defined in exactly one file"
+else
+    fail "known_hosts probe defined in exactly one file" \
+        "found in $_count files: $(grep -rl 'touch /root/.ssh/known_hosts' "$ROOT/extensions/sshk/bin" | tr '\n' ' ')"
+fi
+_count=$(grep -rl 'preventScreenSaver' "$ROOT/extensions/sshk/bin" | wc -l)
+if [ "$_count" = "1" ]; then
+    ok "screensaver calls defined in exactly one file"
+else
+    fail "screensaver calls defined in exactly one file" \
+        "found in $_count files: $(grep -rl 'preventScreenSaver' "$ROOT/extensions/sshk/bin" | tr '\n' ' ')"
+fi
+
+# Direct unit checks of the helpers (sourced in a subshell, bypassing the
+# wrappers) so the shared code is covered on its own terms.
+if [ -f "$LIB" ]; then
+    _out=$(SSHK_TEST_FORCE_AUTO_ACCEPT=1
+           . "$LIB"
+           sshk_known_hosts_flags)
+    if [ "$_out" = "-y" ]; then
+        ok "sshk_known_hosts_flags honours the forced auto-accept probe"
+    else
+        fail "sshk_known_hosts_flags honours the forced auto-accept probe" "got: $_out"
+    fi
+
+    _out=$(. "$LIB"; sshk_map_identity work /base)
+    if [ "$_out" = "/base/kindle_work_key" ]; then
+        ok "sshk_map_identity expands a bare key name"
+    else
+        fail "sshk_map_identity expands a bare key name" "got: $_out"
+    fi
+
+    _out=$(. "$LIB"; sshk_map_identity /abs/key /base)
+    if [ "$_out" = "/abs/key" ]; then
+        ok "sshk_map_identity passes an absolute path through unchanged"
+    else
+        fail "sshk_map_identity passes an absolute path through unchanged" "got: $_out"
+    fi
+
+    reset_case
+    write_hosts "alpha admin@10.0.0.1\nalias2 root@h.example:2222 km\n"
+    _out=$(. "$LIB"
+           sshk_lookup_alias "$HOSTS_CONF" alias2 && \
+           printf '%s|%s|%s' "$SSHK_ALIAS_HOST" "$SSHK_ALIAS_PORT" "$SSHK_ALIAS_KEY")
+    if [ "$_out" = "root@h.example|2222|km" ]; then
+        ok "sshk_lookup_alias splits host, port and key"
+    else
+        fail "sshk_lookup_alias splits host, port and key" "got: $_out"
+    fi
+
+    _rc=$(. "$LIB"; sshk_lookup_alias "$HOSTS_CONF" nosuch; echo $?)
+    if [ "$_rc" = "1" ]; then
+        ok "sshk_lookup_alias reports a miss with rc 1"
+    else
+        fail "sshk_lookup_alias reports a miss with rc 1" "got rc: $_rc"
+    fi
+
+    # An alias whose target contains shell metacharacters must round-trip as
+    # data through the shared lookup (the ssh-menu path relies on this).
+    reset_case
+    write_hosts "evil host;echoPWNED\n"
+    _out=$(. "$LIB"; sshk_lookup_alias "$HOSTS_CONF" evil && printf '%s' "$SSHK_ALIAS_HOST")
+    if [ "$_out" = "host;echoPWNED" ]; then
+        ok "sshk_lookup_alias returns metacharacter targets verbatim"
+    else
+        fail "sshk_lookup_alias returns metacharacter targets verbatim" "got: $_out"
+    fi
+fi
+
+echo "== help & first-run ergonomics =="
+
+reset_case
+write_hosts "myserver admin@192.168.1.10\nwork dev@work.example.com:2222\n"
+
+# -h/--help are handled by the wrapper itself (never forwarded to dbclient),
+# exit 0, and list the user's saved aliases so help doubles as a host list.
+"$BIN/ssh" -h > "$SANDBOX/help.txt" 2>&1
+_rc=$?
+assert_rc "ssh -h exits 0" "0" "$_rc"
+if grep -q "Usage: ssh" "$SANDBOX/help.txt"; then
+    ok "ssh -h prints usage"
+else
+    fail "ssh -h prints usage" "output was:" "$(cat "$SANDBOX/help.txt")"
+fi
+if grep -q "myserver" "$SANDBOX/help.txt" && grep -q "work" "$SANDBOX/help.txt"; then
+    ok "ssh -h lists saved aliases"
+else
+    fail "ssh -h lists saved aliases" "output was:" "$(cat "$SANDBOX/help.txt")"
+fi
+if [ ! -s "$SSHK_TEST_LOG" ]; then
+    ok "ssh -h does not invoke dbclient"
+else
+    fail "ssh -h does not invoke dbclient" "dbclient log: $(cat "$SSHK_TEST_LOG")"
+fi
+
+"$BIN/ssh" --help >/dev/null 2>&1
+assert_rc "ssh --help exits 0" "0" "$?"
+
+# No target and no terminal -> usage + exit 1. The interactive picker is only
+# offered on a tty (and only when ssh-menu is installed next to the wrapper),
+# so scripted/no-tty callers still get a predictable error.
+"$BIN/ssh" < /dev/null > "$SANDBOX/noargs.txt" 2>&1
+assert_rc "ssh with no args (no tty) exits 1" "1" "$?"
+if grep -q "Usage: ssh" "$SANDBOX/noargs.txt"; then
+    ok "ssh with no args prints usage"
+else
+    fail "ssh with no args prints usage" "output was:" "$(cat "$SANDBOX/noargs.txt")"
+fi
+if grep -q 'exec "$BINDIR/ssh-menu"' "$ROOT/extensions/sshk/bin/ssh" && \
+   grep -q '\[ -t 0 \]' "$ROOT/extensions/sshk/bin/ssh"; then
+    ok "ssh offers the quick-connect picker on a terminal"
+else
+    fail "ssh offers the quick-connect picker on a terminal" \
+        "expected '[ -t 0 ]' + 'exec \"\$BINDIR/ssh-menu\"' in the ssh wrapper"
+fi
+
+"$BIN/ssh-tailscale" -h >/dev/null 2>&1
+assert_rc "ssh-tailscale -h exits 0" "0" "$?"
+"$BIN/scp-tailscale" -h >/dev/null 2>&1
+assert_rc "scp-tailscale -h exits 0" "0" "$?"
+
 echo "== scp wrappers =="
 
 reset_case
@@ -318,7 +474,7 @@ echo "== ssh-menu wrapper =="
 
 MENU_SANDBOX="$SANDBOX/menu"
 mkdir -p "$MENU_SANDBOX/bin" "$MENU_SANDBOX"
-for f in ssh-menu ssh-tailscale; do
+for f in ssh-menu ssh-tailscale sshk-common.sh; do
     cp "$ROOT/extensions/sshk/bin/$f" "$MENU_SANDBOX/bin/"
     chmod +x "$MENU_SANDBOX/bin/$f"
 done
@@ -328,6 +484,9 @@ cat > "$MENU_SANDBOX/bin/ssh" <<'STUBEOF'
 echo "$*" >> "$SSHK_TEST_LOG"
 STUBEOF
 chmod +x "$MENU_SANDBOX/bin/ssh"
+# Keep ssh-menu's confirmation pauses instant during tests.
+printf '#!/bin/sh\nexit 0\n' > "$MENU_SANDBOX/bin/sleep"
+chmod +x "$MENU_SANDBOX/bin/sleep"
 # hosts.conf with a comment, blank lines, and three aliases. The middle
 # alias contains shell metacharacters (single quotes, semicolons, spaces)
 # that the old `eval`-based lookup would have executed if selected. The new
@@ -378,50 +537,136 @@ else
     fail "ssh-menu quits on q" "ssh was invoked with: $(cat "$SSHK_TEST_LOG")"
 fi
 
+# Forgiving input: a full alias name, or a raw user@host target, may be typed
+# at the prompt instead of only its menu number.
+reset_case
+printf 'gamma\n' | PATH="$MENU_SANDBOX/bin:$PATH" SSHK_TEST_LOG="$SSHK_TEST_LOG" "$MENU_SANDBOX/bin/ssh-menu" >/dev/null 2>&1
+if [ "$(cat "$SSHK_TEST_LOG" 2>/dev/null)" = "gamma" ]; then
+    ok "ssh-menu accepts an alias name typed in full"
+else
+    fail "ssh-menu accepts an alias name typed in full" "got: $(cat "$SSHK_TEST_LOG" 2>/dev/null)"
+fi
+
+reset_case
+printf 'user@10.1.2.3\n' | PATH="$MENU_SANDBOX/bin:$PATH" SSHK_TEST_LOG="$SSHK_TEST_LOG" "$MENU_SANDBOX/bin/ssh-menu" >/dev/null 2>&1
+if [ "$(cat "$SSHK_TEST_LOG" 2>/dev/null)" = "user@10.1.2.3" ]; then
+    ok "ssh-menu accepts a raw user@host target"
+else
+    fail "ssh-menu accepts a raw user@host target" "got: $(cat "$SSHK_TEST_LOG" 2>/dev/null)"
+fi
+
+# Add-host must reject an alias that would corrupt the whitespace-separated
+# hosts.conf format, and must not write it.
+_cp_before=$(cat "$MENU_SANDBOX/hosts.conf")
+_aout=$(printf 'a\nbad name\n' | PATH="$MENU_SANDBOX/bin:$PATH" SSHK_TEST_LOG="$SSHK_TEST_LOG" "$MENU_SANDBOX/bin/ssh-menu" 2>&1)
+case "$_aout" in
+    *"may only contain"*) ok "ssh-menu rejects an alias with spaces" ;;
+    *) fail "ssh-menu rejects an alias with spaces" "output: $_aout" ;;
+esac
+if [ "$(cat "$MENU_SANDBOX/hosts.conf")" = "$_cp_before" ]; then
+    ok "ssh-menu does not write a rejected alias"
+else
+    fail "ssh-menu does not write a rejected alias" "hosts.conf changed"
+fi
+
+# Happy path: a well-formed alias is appended to hosts.conf.
+reset_case
+printf 'a\nnewhost\nadmin@10.9.9.9\n\n' | PATH="$MENU_SANDBOX/bin:$PATH" SSHK_TEST_LOG="$SSHK_TEST_LOG" "$MENU_SANDBOX/bin/ssh-menu" >/dev/null 2>&1
+if grep -q '^newhost admin@10.9.9.9$' "$MENU_SANDBOX/hosts.conf"; then
+    ok "ssh-menu appends a valid host alias"
+else
+    fail "ssh-menu appends a valid host alias" "hosts.conf: $(cat "$MENU_SANDBOX/hosts.conf")"
+fi
+# Restore the original alias set for the render checks below.
+grep -v '^newhost admin@10.9.9.9$' "$MENU_SANDBOX/hosts.conf" > "$MENU_SANDBOX/hosts.conf.tmp"
+mv "$MENU_SANDBOX/hosts.conf.tmp" "$MENU_SANDBOX/hosts.conf"
+
+# The menu must render the saved aliases with a stable index (so one keypress
+# connects) and print a metacharacter alias verbatim, not evaluated.
+_out=$(printf 'q\n' | PATH="$MENU_SANDBOX/bin:$PATH" SSHK_TEST_LOG="$SSHK_TEST_LOG" "$MENU_SANDBOX/bin/ssh-menu" 2>&1)
+case "$_out" in
+    *"[1] alpha"*) ok "ssh-menu renders saved aliases with an index" ;;
+    *) fail "ssh-menu renders saved aliases with an index" "output:" "$_out" ;;
+esac
+case "$_out" in
+    *"'evil;rm-rf/tmp'"*) ok "ssh-menu renders metacharacter aliases verbatim" ;;
+    *) fail "ssh-menu renders metacharacter aliases verbatim" "output:" "$_out" ;;
+esac
+
+# A first-time user (no hosts.conf entries) should be told how to add one.
+rm -f "$MENU_SANDBOX/hosts.conf"
+_out=$(printf 'q\n' | PATH="$MENU_SANDBOX/bin:$PATH" SSHK_TEST_LOG="$SSHK_TEST_LOG" "$MENU_SANDBOX/bin/ssh-menu" 2>&1)
+case "$_out" in
+    *"No saved hosts"*) ok "ssh-menu guides an empty hosts.conf" ;;
+    *) fail "ssh-menu guides an empty hosts.conf" "output:" "$_out" ;;
+esac
+
 echo "== server scripts =="
 
-# The PIDFILE written by server-start.sh used to be the wrapper shell's PID
-# (Dropbear double-forks, so the immediate child of the wrapper is a
-# short-lived parent, not the daemon). The simulator can't easily exercise
-# the real ARM dropbear here, so we test the contract: the script must use
-# an anchored pattern (`^dropbearmulti dropbear .*-p <PORT>`) that only
-# matches our own multi-call binary invocation, not the wrapper shell.
-# If the live pidfile PID is stale, the script must look the daemon up in the
-# process table via `pgrep` and overwrite the pidfile with the live PID.
-if grep -q '^DROPBEAR_PATTERN=' extensions/sshk/bin/server-start.sh && \
-   grep -q 'DROPBEAR_PATTERN="dropbear .*-p $PORT"' extensions/sshk/bin/server-start.sh; then
-    ok "server-start.sh uses anchored multi-call pattern for PID lookup"
+# The inbound-server scripts share server-common.sh (mirroring the client's
+# sshk-common.sh) so the port, the pidfile path and the process-match pattern
+# live in exactly one place. The pattern must be a `dropbear .*-p <PORT>` token
+# match: under qemu-arm-static the daemon argv begins with `qemu-arm-static`,
+# so we cannot anchor on `dropbearmulti`, and the phrase is specific enough not
+# to false-positive on the wrapper shell.
+if grep -q 'SSHK_DROPBEAR_PATTERN="dropbear .*-p \$SSHK_SERVER_PORT"' extensions/sshk/bin/server-common.sh && \
+   grep -q 'SSHK_SERVER_PORT="2222"' extensions/sshk/bin/server-common.sh; then
+    ok "server-common.sh defines the sshk dropbear pattern + port"
 else
-    fail "server-start.sh uses anchored multi-call pattern for PID lookup" \
-        "expected 'dropbear .*-p \$PORT' pattern in server-start.sh"
-fi
-if grep -q 'find_live_pid' extensions/sshk/bin/server-start.sh && \
-   grep -q 'echo "$LIVE_PID" > "$PIDFILE"' extensions/sshk/bin/server-start.sh; then
-    ok "server-start.sh overwrites pidfile with the live daemon PID"
-else
-    fail "server-start.sh overwrites pidfile with the live daemon PID" \
-        "expected 'echo \"\$LIVE_PID\" > \"\$PIDFILE\"' after PID lookup"
+    fail "server-common.sh defines the sshk dropbear pattern + port" \
+        "expected the dropbear pattern and port in server-common.sh"
 fi
 
-# server-stop.sh must use the same pattern so it never kills an
-# unrelated process whose argv happens to mention `-p 2222`. We can't
-# anchor on `^dropbearmulti` because under qemu-arm-static the cmdline of
-# the daemon begins with `qemu-arm-static`, not `dropbearmulti`; matching
-# `dropbear .*-p <PORT>` as a substring covers both invocation modes.
-if grep -q 'DROPBEAR_PATTERN="dropbear .*-p $PORT"' extensions/sshk/bin/server-stop.sh && \
-   grep -qE 'pkill -f "\$DROPBEAR_PATTERN"|pgrep -f "\$DROPBEAR_PATTERN"' extensions/sshk/bin/server-stop.sh; then
+for s in server-start.sh server-stop.sh server-toggle.sh server-status.sh; do
+    if grep -q 'server-common.sh' "extensions/sshk/bin/$s"; then
+        ok "$s sources server-common.sh"
+    else
+        fail "$s sources server-common.sh" "expected a '.' source of server-common.sh"
+    fi
+done
+
+# server-start.sh must overwrite the pidfile with the LIVE daemon PID (the
+# wrapper PID goes stale at once because dropbear double-forks), and must be
+# idempotent so server-toggle.sh cannot race a second daemon onto the port.
+if grep -q 'sshk_server_live_pid' extensions/sshk/bin/server-start.sh && \
+   grep -q 'echo "$LIVE_PID" > "$SSHK_SERVER_PIDFILE"' extensions/sshk/bin/server-start.sh && \
+   grep -q 'is already running' extensions/sshk/bin/server-start.sh; then
+    ok "server-start.sh records the live daemon PID and is idempotent"
+else
+    fail "server-start.sh records the live daemon PID and is idempotent" \
+        "expected a live-PID pidfile write and an already-running guard"
+fi
+
+# server-stop.sh must kill only our dropbear (via the shared pattern).
+if grep -qE 'pkill -f "\$SSHK_DROPBEAR_PATTERN"|pgrep -f "\$SSHK_DROPBEAR_PATTERN"' extensions/sshk/bin/server-stop.sh; then
     ok "server-stop.sh kills only the sshk dropbear process"
 else
     fail "server-stop.sh kills only the sshk dropbear process" \
-        "expected 'dropbear .*-p \$PORT' + pkill/pgrep -f in server-stop.sh"
+        "expected pkill/pgrep -f \"\$SSHK_DROPBEAR_PATTERN\" in server-stop.sh"
 fi
 
-# server-toggle.sh must use the same pattern.
-if grep -q 'DROPBEAR_PATTERN="dropbear .*-p $PORT"' extensions/sshk/bin/server-toggle.sh; then
-    ok "server-toggle.sh uses the sshk dropbear pattern"
+# server-status.sh must run cleanly and report the state plus the connect hint.
+# Stub pgrep to report "no match" so the check is deterministic and never
+# writes a pidfile or touches a real process.
+_ss_stub=$(mktemp -d "${TMPDIR:-/tmp}/sshk-pgrep.XXXXXX")
+printf '#!/bin/sh\nexit 1\n' > "$_ss_stub/pgrep"
+chmod +x "$_ss_stub/pgrep"
+_ss_out=$(PATH="$_ss_stub:$PATH" sh extensions/sshk/bin/server-status.sh 2>&1); _ss_rc=$?
+rm -rf "$_ss_stub"
+assert_rc "server-status.sh exits 0" "0" "$_ss_rc"
+case "$_ss_out" in
+    *"SSH server"*) ok "server-status.sh reports server state" ;;
+    *) fail "server-status.sh reports server state" "output: $_ss_out" ;;
+esac
+
+# eips-refresh is invoked directly by ssh-menu ("Refresh E-Ink Screen") but was
+# the only script in bin/ checked in without the executable bit, so that menu
+# option failed on a fresh install. Guard the mode.
+if [ -x "$ROOT/extensions/sshk/bin/eips-refresh" ]; then
+    ok "eips-refresh is executable (ssh-menu invokes it directly)"
 else
-    fail "server-toggle.sh uses the sshk dropbear pattern" \
-        "expected 'dropbear .*-p \$PORT' in server-toggle.sh"
+    fail "eips-refresh is executable (ssh-menu invokes it directly)" \
+        "eips-refresh must ship with the executable bit set"
 fi
 
 # uninstall.sh must verify the /root/.ssh symlink target before removing it.

@@ -1,7 +1,12 @@
 #!/bin/sh
 # ssh-menu - Interactive SSH connection manager & picker for kterm on Kindle
 
-BINDIR="$(cd "$(dirname "$0")" && pwd)"
+# Same dirname-free directory resolution the connection wrappers use.
+case "$0" in
+    */*) BINDIR="${0%/*}" ;;
+    *) BINDIR="." ;;
+esac
+BINDIR="$(cd "$BINDIR" && pwd)"
 CONF="$BINDIR/../hosts.conf"
 
 clear 2>/dev/null || echo ""
@@ -42,39 +47,50 @@ echo ""
 # hosts.conf. Looking up by index via `sed -n "${n}p"` avoids `eval`, so a
 # hosts.conf line containing shell metacharacters cannot trigger code
 # execution when its alias is selected.
+#
+# Parsing uses pure shell parameter expansion (no sed/awk per line): a Kindle
+# forks slowly, and a hosts.conf with a dozen entries made this menu crawl.
 ALIASES=""
+ALIAS_SET=""   # ":alias1:alias2:..." for forgiving name lookup without eval
 COUNT=0
 
 if [ -f "$CONF" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
-        trimmed=$(echo "$line" | sed 's/^[ \t]*//')
-        case "$trimmed" in
-            \#*|"") continue ;;
-            *)
-                COUNT=$((COUNT + 1))
-                alias_name=$(echo "$trimmed" | awk '{print $1}')
-                alias_target=$(echo "$trimmed" | awk '{print $2}')
-                alias_key=$(echo "$trimmed" | awk '{print $3}')
-
-                key_info=""
-                if [ -n "$alias_key" ]; then
-                    key_info=" (key: $alias_key)"
-                fi
-
-                printf "  [%d] %-12s -> %s%s\n" "$COUNT" "$alias_name" "$alias_target" "$key_info"
-                if [ -z "$ALIASES" ]; then
-                    ALIASES="$alias_name"
-                else
-                    ALIASES="$ALIASES
-$alias_name"
-                fi
-                ;;
+        # Trim leading whitespace, then skip comments and blank lines.
+        line="${line#"${line%%[![:space:]]*}"}"
+        case "$line" in
+            ''|'#'*) continue ;;
         esac
+
+        COUNT=$((COUNT + 1))
+
+        alias_name="${line%%[[:space:]]*}"
+        rest="${line#"$alias_name"}"
+        rest="${rest#"${rest%%[![:space:]]*}"}"
+        alias_target="${rest%%[[:space:]]*}"
+        rest="${rest#"$alias_target"}"
+        rest="${rest#"${rest%%[![:space:]]*}"}"
+        alias_key="${rest%%[[:space:]]*}"
+
+        key_info=""
+        if [ -n "$alias_key" ]; then
+            key_info=" (key: $alias_key)"
+        fi
+
+        printf "  [%d] %-12s -> %s%s\n" "$COUNT" "$alias_name" "$alias_target" "$key_info"
+        ALIAS_SET="$ALIAS_SET:$alias_name"
+        if [ -z "$ALIASES" ]; then
+            ALIASES="$alias_name"
+        else
+            ALIASES="$ALIASES
+$alias_name"
+        fi
     done < "$CONF"
 fi
 
 if [ "$COUNT" -eq 0 ]; then
-    echo "  (No saved hosts in hosts.conf)"
+    echo "  (No saved hosts yet)"
+    echo "  Press [a] to add your first host, or [c] to connect without saving."
     echo ""
 fi
 
@@ -118,19 +134,38 @@ case "$choice" in
         echo "--- Add New Host Alias ---"
         printf "Alias name (e.g. myserver): "
         read -r new_alias
-        if [ -z "$new_alias" ]; then
-            echo "Cancelled."
-            sleep 1
-            exec "$0"
-        fi
+        case "$new_alias" in
+            "")
+                echo "Cancelled."
+                sleep 1
+                exec "$0"
+                ;;
+            *[!A-Za-z0-9_-]*)
+                # Alias names are whitespace-separated from the target in
+                # hosts.conf, so keep them to one safe token rather than
+                # writing a line the parser would misread.
+                echo "Alias may only contain letters, digits, '_' and '-'."
+                sleep 2
+                exec "$0"
+                ;;
+        esac
 
         printf "Connection target (user@host[:port]): "
         read -r new_target
-        if [ -z "$new_target" ]; then
-            echo "Cancelled."
-            sleep 1
-            exec "$0"
-        fi
+        case "$new_target" in
+            "")
+                echo "Cancelled."
+                sleep 1
+                exec "$0"
+                ;;
+            *[[:space:]#]*)
+                # Whitespace would split the line into the wrong fields, and
+                # '#' would turn it into a comment. Anything else is preserved.
+                echo "Target cannot contain spaces or '#'."
+                sleep 2
+                exec "$0"
+                ;;
+        esac
 
         printf "Custom key name (optional, press Enter for default): "
         read -r new_key
@@ -167,10 +202,27 @@ case "$choice" in
             echo ""
             echo "Connecting to $selected_alias..."
             exec "$BINDIR/ssh" "$selected_alias"
-        else
-            echo "Invalid choice: '$choice'"
-            sleep 1
-            exec "$0"
         fi
+
+        # Be forgiving: also accept the alias name typed in full, or a raw
+        # user@host[:port] target, instead of only the menu number. The name
+        # check is a ":name:" substring test -- no eval, and the name is quoted
+        # so a metacharacter alias cannot inject a glob into the pattern.
+        _direct=""
+        case "${ALIAS_SET}:" in
+            *":$choice:"*) _direct=1 ;;
+        esac
+        case "$choice" in
+            *@*) _direct=1 ;;
+        esac
+        if [ -n "$_direct" ]; then
+            echo ""
+            echo "Connecting to $choice..."
+            exec "$BINDIR/ssh" "$choice"
+        fi
+
+        echo "Invalid choice: '$choice'"
+        sleep 1
+        exec "$0"
         ;;
 esac
