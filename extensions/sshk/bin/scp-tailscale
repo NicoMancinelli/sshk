@@ -6,16 +6,26 @@
 # so this wrapper only has to:
 #   1. Look up host aliases in hosts.conf (the ssh wrapper does this on
 #      the ssh side; scp-tailscale has to do it itself because dropbear-scp
-#      sees the alias as a literal target).
+#      sees the alias as a literal target). The lookup itself is shared with
+#      ssh / ssh-tailscale via sshk-common.sh.
 #   2. Inject the native key for the local-side protocol when one exists.
 # Everything else passes through and is forwarded by dropbear-scp to
 # ssh-tailscale.
 
-BINDIR="$(cd "$(dirname "$0")" && pwd)"
+# Resolve our own directory with pure POSIX expansion: `cd`/`pwd` are shell
+# builtins, so the wrapper can still find its sidecar files (sshk-common.sh)
+# when PATH is empty or `dirname` is unavailable.
+case "$0" in
+    */*) BINDIR="${0%/*}" ;;
+    *) BINDIR="." ;;
+esac
+BINDIR="$(cd "$BINDIR" && pwd)"
 SCP_BIN="$BINDIR/dropbearmulti"
 CONF="$BINDIR/../hosts.conf"
+# shellcheck disable=SC1091  # resolved via $BINDIR at runtime; linted standalone
+. "$BINDIR/sshk-common.sh"
 
-if [ $# -lt 1 ]; then
+usage() {
     echo "Usage: scp-tailscale [options] source... target"
     echo ""
     echo "Examples:"
@@ -23,9 +33,31 @@ if [ $# -lt 1 ]; then
     echo "  scp-tailscale -P 2223 -i work file.txt user@host:/path/"
     echo "  scp-tailscale file.txt work_server         # alias from hosts.conf"
     echo ""
-    echo "Host aliases live in: $CONF"
+    echo "Options:"
+    echo "  -P <port>        Remote SSH port."
+    echo "  -i <name|path>   Identity key. Name -> kindle_<name>_key."
+    echo "  -h, --help       Show this help."
+    echo ""
+    _names=$(sshk_alias_names "$CONF")
+    if [ -n "$_names" ]; then
+        echo "Saved aliases (from $CONF):"
+        printf '%s\n' "$_names" | sed 's/^/  /'
+    else
+        echo "No saved aliases yet - run 'ssh-menu' (or 'sshk') to add one."
+    fi
+}
+
+if [ $# -lt 1 ]; then
+    usage
     exit 1
 fi
+
+case "$1" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
 
 # Walk argv manually: keep every flag together with its argument so we can
 # rebuild the dropbear-scp argv without losing -i / -P / -r etc.
@@ -73,28 +105,20 @@ if [ -z "${TARGET:-}" ]; then
     exit 1
 fi
 
-# If target is an alias, resolve it.
-ALIAS_KEY=""
-ALIAS_PORT=""
+# If target is an alias, resolve it. sshk_lookup_alias leaves the host in
+# SSHK_ALIAS_HOST (with any :port split into SSHK_ALIAS_PORT) and the key name
+# in SSHK_ALIAS_KEY; an explicit user@host target skips the lookup entirely.
 RESOLVED_TARGET="$TARGET"
+SSHK_ALIAS_HOST=""
+SSHK_ALIAS_PORT=""
+SSHK_ALIAS_KEY=""
 case "$TARGET" in
     *@*)
         # Already in user@host[:port] form - leave alone.
         ;;
     *)
-        if [ -f "$CONF" ]; then
-            MATCH=$(grep -v '^[[:space:]]*#' "$CONF" | grep -v '^[[:space:]]*$' | awk -v a="$TARGET" '$1 == a {print; exit}')
-            if [ -n "$MATCH" ]; then
-                ALIAS_HOST=$(echo "$MATCH" | awk '{print $2}')
-                ALIAS_KEY=$(echo "$MATCH" | awk '{print $3}')
-                case "$ALIAS_HOST" in
-                    *:*)
-                        ALIAS_PORT="${ALIAS_HOST##*:}"
-                        ALIAS_HOST="${ALIAS_HOST%:*}"
-                        ;;
-                esac
-                RESOLVED_TARGET="$ALIAS_HOST"
-            fi
+        if sshk_lookup_alias "$CONF" "$TARGET"; then
+            RESOLVED_TARGET="$SSHK_ALIAS_HOST"
         fi
         ;;
 esac
@@ -107,12 +131,12 @@ if [ -f "$BINDIR/kindle_native_key" ]; then
     SCP_ARGS="$SCP_ARGS -i $BINDIR/kindle_native_key"
 fi
 
-if [ -n "$ALIAS_PORT" ]; then
-    SCP_ARGS="$SCP_ARGS -P $ALIAS_PORT"
+if [ -n "$SSHK_ALIAS_PORT" ]; then
+    SCP_ARGS="$SCP_ARGS -P $SSHK_ALIAS_PORT"
 fi
 
-if [ -n "$ALIAS_KEY" ]; then
-    SCP_ARGS="$SCP_ARGS -i $ALIAS_KEY"
+if [ -n "$SSHK_ALIAS_KEY" ]; then
+    SCP_ARGS="$SCP_ARGS -i $SSHK_ALIAS_KEY"
 fi
 
 exec "$SCP_BIN" $SCP_ARGS $PRE_TARGET "$RESOLVED_TARGET"

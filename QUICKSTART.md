@@ -16,9 +16,9 @@ Get SSH running on your jailbroken Kindle in 3 easy steps!
 3. **Eject Kindle & Open kterm**:
    - Open `kterm` from KUAL and type:
      ```bash
-     sshk
+     ssh
      ```
-     *(Opens the interactive connection menu — connect with 1 keypress!)*
+     *(No arguments needed — `ssh` opens the interactive connection menu; connect with 1 keypress! `sshk` does the same.)*
 
 ---
 
@@ -49,10 +49,12 @@ To log into your remote server without a password:
 
 | Action | Command |
 |---|---|
-| **Quick-Connect Menu** | `sshk` *(or `ssh-menu`)* |
+| **Quick-Connect Menu** | `ssh` *(no arguments — or `sshk` / `ssh-menu`)* |
+| Get help (lists saved hosts) | `ssh -h` *(also `ssh-tailscale -h`, `scp-tailscale -h`)* |
 | Connect via SSH | `ssh user@host` |
 | Connect via Tailscale | `ssh-tailscale user@host` |
 | Connect with custom port | `ssh -p 2222 user@host` |
 | Copy file to server | `scp file.txt user@host:/path/` |
 | Connect using saved alias | `ssh myserver` *(configured in `hosts.conf` or via `sshk` menu)* |
+| Connect **into** Kindle from a PC | `ssh root@<kindle-ip> -p 2222` *(start server in KUAL)* |
 | Refresh E-Ink Screen | `eips-refresh` *(clears ghosting)* |

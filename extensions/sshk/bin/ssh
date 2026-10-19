@@ -1,9 +1,18 @@
 #!/bin/sh
 # ssh - wrapper around dbclient for Kindle
-BINDIR="$(cd "$(dirname "$0")" && pwd)"
+# Resolve our own directory with pure POSIX expansion: `cd`/`pwd` are shell
+# builtins, so the wrapper can still find its sidecar files (sshk-common.sh,
+# keys, dbclient) when PATH is empty or `dirname` is unavailable.
+case "$0" in
+    */*) BINDIR="${0%/*}" ;;
+    *) BINDIR="." ;;
+esac
+BINDIR="$(cd "$BINDIR" && pwd)"
 CONF="$BINDIR/../hosts.conf"
+# shellcheck disable=SC1091  # resolved via $BINDIR at runtime; linted standalone
+. "$BINDIR/sshk-common.sh"
 
-if [ -z "$1" ]; then
+usage() {
     echo "Usage: ssh [options] user@host[:port] | <alias> [command]"
     echo ""
     echo "Examples:"
@@ -15,24 +24,52 @@ if [ -z "$1" ]; then
     echo "  -i <name|path>   Identity key. Name -> kindle_<name>_key."
     echo "  -p <port>        SSH port on the remote host."
     echo "  -L/-R/-l <spec>  Forwarded through to dbclient."
+    echo "  -h, --help       Show this help."
     echo ""
-    echo "Host aliases live in: $CONF"
+    _names=$(sshk_alias_names "$CONF")
+    if [ -n "$_names" ]; then
+        echo "Saved aliases (from $CONF):"
+        printf '%s\n' "$_names" | sed 's/^/  /'
+    else
+        echo "No saved aliases yet - run 'ssh-menu' (or 'sshk') to add one."
+    fi
+}
+
+# `ssh` with no arguments is the friendliest entry point: open the
+# quick-connect picker when we have a terminal, otherwise print usage. This
+# means the whole tool can be driven by typing just `ssh`.
+if [ $# -eq 0 ]; then
+    if [ -t 0 ] && [ -x "$BINDIR/ssh-menu" ]; then
+        exec "$BINDIR/ssh-menu"
+    fi
+    usage
     exit 1
 fi
 
-# Known hosts check. Tests force the auto-accept branch via
-# SSHK_TEST_FORCE_AUTO_ACCEPT=1 so the probe can be exercised
-# deterministically from a non-Kindle sandbox.
-OPTS=""
-if [ "${SSHK_TEST_FORCE_AUTO_ACCEPT:-0}" = "1" ]; then
-    OPTS="-y"
-elif [ -w "/root/.ssh/known_hosts" ] || touch /root/.ssh/known_hosts 2>/dev/null; then
-    :
-else
-    OPTS="-y"
+case "$1" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
+
+if [ -z "$1" ]; then
+    usage
+    exit 1
 fi
 
+# Known hosts check. The shared probe (sshk-common.sh) yields "-y" only when
+# /root/.ssh/known_hosts cannot be created or written; tests force that branch
+# via SSHK_TEST_FORCE_AUTO_ACCEPT=1.
+OPTS=$(sshk_known_hosts_flags)
+
 HAS_I=0
+
+# Return values filled in by sshk_lookup_alias below; initialised so the shell
+# never sees an unset read.
+SSHK_ALIAS_HOST=""
+SSHK_ALIAS_PORT=""
+SSHK_ALIAS_KEY=""
 
 COUNT=$#
 i=0
@@ -47,10 +84,7 @@ while [ $i -lt $COUNT ]; do
                 keyarg="$1"
                 shift
                 i=$((i + 1))
-                case "$keyarg" in
-                    */*) set -- "$@" "-i" "$keyarg" ;;
-                    *) set -- "$@" "-i" "$BINDIR/kindle_${keyarg}_key" ;;
-                esac
+                set -- "$@" "-i" "$(sshk_map_identity "$keyarg" "$BINDIR")"
                 HAS_I=1
             else
                 set -- "$@" "-i"
@@ -74,31 +108,18 @@ while [ $i -lt $COUNT ]; do
                     set -- "$@" "$TARGET"
                     ;;
                 *)
-                    if [ -f "$CONF" ]; then
-                        MATCH=$(grep -v '^[[:space:]]*#' "$CONF" | grep -v '^[[:space:]]*$' | awk -v a="$TARGET" '$1 == a {print; exit}')
-                        if [ -n "$MATCH" ]; then
-                            ALIAS_HOST=$(echo "$MATCH" | awk '{print $2}')
-                            ALIAS_KEY=$(echo "$MATCH" | awk '{print $3}')
-                            
-                            case "$ALIAS_HOST" in
-                                *:*)
-                                    ALIAS_PORT="${ALIAS_HOST##*:}"
-                                    ALIAS_HOST="${ALIAS_HOST%:*}"
-                                    set -- "$@" "-p" "$ALIAS_PORT"
-                                    ;;
-                            esac
-                            
-                            if [ -n "$ALIAS_KEY" ] && [ $HAS_I -eq 0 ]; then
-                                AKEY="$BINDIR/kindle_${ALIAS_KEY}_key"
-                                if [ -f "$AKEY" ]; then
-                                    set -- "$@" "-i" "$AKEY"
-                                    HAS_I=1
-                                fi
-                            fi
-                            set -- "$@" "$ALIAS_HOST"
-                        else
-                            set -- "$@" "$TARGET"
+                    if sshk_lookup_alias "$CONF" "$TARGET"; then
+                        if [ -n "$SSHK_ALIAS_PORT" ]; then
+                            set -- "$@" "-p" "$SSHK_ALIAS_PORT"
                         fi
+                        if [ -n "$SSHK_ALIAS_KEY" ] && [ $HAS_I -eq 0 ]; then
+                            AKEY=$(sshk_identity_path "$BINDIR" "$SSHK_ALIAS_KEY")
+                            if [ -f "$AKEY" ]; then
+                                set -- "$@" "-i" "$AKEY"
+                                HAS_I=1
+                            fi
+                        fi
+                        set -- "$@" "$SSHK_ALIAS_HOST"
                     else
                         set -- "$@" "$TARGET"
                     fi
@@ -115,28 +136,15 @@ while [ $i -lt $COUNT ]; do
 done
 
 if [ $HAS_I -eq 0 ]; then
-    KEY="$BINDIR/kindle_native_key"
-    if [ ! -f "$KEY" ]; then
-        echo "sshk: First run detected - generating default SSH key..."
-        "$BINDIR/dropbearkey" -t ed25519 -f "$KEY" >/dev/null 2>&1
-        if [ -f "$KEY" ]; then
-            "$BINDIR/showkey.sh" "native" >/dev/null 2>&1
-        fi
-    fi
-    if [ -f "$KEY" ]; then
-        OPTS="$OPTS -i $KEY"
+    SSHK_NATIVE_OPTS=""
+    sshk_native_key_opts "$BINDIR"
+    if [ -n "$SSHK_NATIVE_OPTS" ]; then
+        OPTS="$OPTS $SSHK_NATIVE_OPTS"
     fi
 fi
 
 # Inhibit screensaver while SSH is active (restores on exit)
-if command -v lipc-set-prop >/dev/null 2>&1; then
-    lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null || true
-    cleanup() {
-        # shellcheck disable=SC2317  # reached via signal trap, not a direct call
-        lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null || true
-    }
-    trap cleanup EXIT INT TERM HUP
-fi
+sshk_inhibit_screensaver
 
 "$BINDIR/dbclient" $OPTS "$@"
 EXIT_CODE=$?

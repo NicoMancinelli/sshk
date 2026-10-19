@@ -6,9 +6,9 @@ Normally, Kindle devices do not have an SSH client installed, and compiling one 
 
 ## Features
 
-- **Interactive Quick-Connect Menu**: Type `sshk` in kterm to open a numbered connection menu — connect with 1 keypress without typing long hostnames.
+- **Interactive Quick-Connect Menu**: Type `ssh` (or `sshk`) in kterm to open a numbered connection menu — connect with 1 keypress without typing long hostnames.
 - **WiFi Keepalive & Sleep Inhibitor**: Automatically stops the Kindle from entering sleep/screensaver mode while an SSH session is active, preventing dropped connections.
-- **Inbound SSH Server (2-in-1)**: Start/Stop a Dropbear SSH server directly from KUAL on port 2222 to connect *into* your Kindle from your PC.
+- **Inbound SSH Server (2-in-1)**: Start/stop a Dropbear SSH server from KUAL on port 2222, check its status, and connect *into* your Kindle from your PC (public-key only).
 - **Landscape Terminal Preset**: Open `kterm` pre-rotated into landscape mode with optimized font size from KUAL.
 - **SCP File Transfer**: Transfer files to and from remote servers, including over Tailscale (`scp` and `scp-tailscale`).
 - **Host Aliases**: Save frequently used connections in `hosts.conf` for quick access (e.g., `ssh myserver` instead of `ssh admin@192.168.1.10:2222`).
@@ -64,6 +64,10 @@ Want to connect to your remote server without typing a password every time?
 
 Open `kterm` from KUAL and run:
 
+- **Simplest of all — just type `ssh`**: with no arguments it opens the
+  quick-connect menu (or prints help when there is no terminal).
+- **If you ever get stuck, add `-h`** (e.g. `ssh -h`, `ssh-tailscale -h`,
+  `scp-tailscale -h`) for help that also lists your saved aliases.
 - **For standard SSH connections**:
   ```bash
   ssh user@host
@@ -87,6 +91,27 @@ Open `kterm` from KUAL and run:
   ssh myserver
   ssh-tailscale tailnet-host
   ```
+
+## Connecting *into* your Kindle (inbound server)
+
+In KUAL, open **sshk: SSH Client** -> **🔁 SSH Server (Port 2222)**:
+
+- **🔄 Start / Stop** — toggles the Dropbear server.
+- **📊 Server Status** — shows whether it is running and the exact command to use.
+
+With the server running, connect from your computer (the device screen shows your
+IP and this exact line):
+
+```bash
+ssh root@<kindle-ip> -p 2222
+```
+
+Inbound logins are **public-key only** (no passwords). `authorize-server.sh` also
+stages your computer's key so it can log in:
+
+```bash
+./authorize-server.sh root@<kindle-ip>
+```
 
 ## Host Aliases
 

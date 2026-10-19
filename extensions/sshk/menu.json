@@ -11,9 +11,22 @@
       "action": "bin/kterm-landscape.sh"
     },
     {
-      "name": "🔁 SSH Server (Start/Stop, Port 2222)",
+      "name": "🔁 SSH Server (Port 2222)",
       "priority": 2,
-      "action": "bin/server-toggle.sh"
+      "menu": {
+        "items": [
+          {
+            "name": "🔄 Start / Stop",
+            "priority": 0,
+            "action": "bin/server-toggle.sh"
+          },
+          {
+            "name": "📊 Server Status",
+            "priority": 1,
+            "action": "bin/server-status.sh"
+          }
+        ]
+      }
     },
     {
       "name": "🔑 SSH Keys",

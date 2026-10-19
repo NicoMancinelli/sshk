@@ -41,12 +41,12 @@ echo "=== sshk v$VERSION: 1-Tap Installation ==="
 # them. (The plain scripts we ship today all already carry `.sh` — this list
 # catches the suffix-less wrappers `dbclient`, `dropbear`, `dropbearkey`,
 # `dropbearmulti`, `scp`, `scp-tailscale`, `ssh`, `ssh-tailscale`, `sshk`,
-# `ssh-menu`, and `server-toggle.sh`.)
+# `ssh-menu`, `server-toggle.sh`, and `eips-refresh`.)
 for f in "$BINDIR"/*; do
     [ -f "$f" ] || continue
     name=$(basename "$f")
     case "$name" in
-        dbclient|dropbear|dropbearkey|dropbearmulti|scp|scp-tailscale|ssh|ssh-tailscale|sshk|ssh-menu|server-toggle.sh|*.sh)
+        dbclient|dropbear|dropbearkey|dropbearmulti|scp|scp-tailscale|ssh|ssh-tailscale|sshk|ssh-menu|eips-refresh|server-toggle.sh|*.sh)
             chmod +x "$f" 2>/dev/null || :
             ;;
     esac
@@ -127,8 +127,11 @@ else
     eips_print_row 7 "[--] Failed to generate key"
 fi
 
-eips_print_row 10 "Ready! Open kterm & type: ssh user@host"
+eips_print_row 10 "Ready! Open kterm and type: ssh"
 eips_print_row 11 "========================================"
 
 echo ""
-echo "Installation complete! You can now open kterm and run 'ssh user@host'."
+echo "Installation complete!"
+echo "  * Open kterm and type 'ssh' to open the quick-connect menu."
+echo "  * Add a host in the menu with [a], or edit extensions/sshk/hosts.conf."
+echo "  * Authorize a server from your computer: ./authorize-server.sh user@host"
