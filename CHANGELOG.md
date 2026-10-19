@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.6] - 2026-10-18
+
 ### Added
 - **`ssh` with no arguments opens the quick-connect menu.** On a terminal (and when `ssh-menu` sits next to the wrapper) typing just `ssh` now shows the numbered picker, so the whole tool can be driven by one word. Non-tty/scripted callers still get usage and exit 1, so automation is unaffected.
 - **`-h` / `--help` on `ssh`, `ssh-tailscale` and `scp-tailscale`.** Help is handled by the wrapper itself (never forwarded to `dbclient`/`scp`) and lists the aliases saved in `hosts.conf`, so help doubles as a host list. When `hosts.conf` is empty it points the user at `ssh-menu` instead.
