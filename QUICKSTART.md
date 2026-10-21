@@ -55,7 +55,7 @@ Tailscale automatically. sshk does not install, log in, or start the daemon.
 
 ### Connect from your computer into the Kindle
 
-With the Kindle mounted by USB, run `./authorize-kindle.sh /path/to/Kindle`.
+With the Kindle mounted by USB, run `./authorize-kindle.sh` (or pass `/path/to/Kindle` explicitly).
 This uses your computer's `~/.ssh/id_ed25519.pub`; supply another `.pub` file as
 a second argument if needed. Eject USB, run **Setup & Maintenance > Install / Repair**
 once, then **SSH Server > Start Server**. **Server Status** shows the address.

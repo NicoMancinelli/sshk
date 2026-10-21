@@ -9,7 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [1.7] - 2026-10-21
 
 ### Added
-- KUAL Setup & Status and key-direction guidance, including `authorize-kindle.sh MOUNT [PUBLIC_KEY]` for explicitly authorizing computer access over USB.
+- KUAL Setup & Status and key-direction guidance, including `authorize-kindle.sh` with automatic USB mount detection and flexible argument handling.
+- Landscape terminal DPI adaptation (`kterm-landscape.sh`) detecting display DPI from `Xorg.0.log` for high-resolution keyboard layouts (200dpi/300dpi) and exporting `TERM`, `PATH`, and `TERMINFO`.
 - Separate Start Server and Stop Server actions; exact daemon ownership/listener checks, public-key-only foreground Dropbear, reliable failure reporting, stale-PID protection, and a reboot notice for a pre-upgrade v1.6 daemon.
 - Reversible install/repair and uninstall behavior that preserves existing SSH configuration, keys, authorized users, saved hosts, and later kterm edits.
 - Saved-host edit/remove with confirmation, field validation, duplicate checks, and atomic updates.
@@ -19,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 - `authorize-server.sh` now transfers the validated Kindle public key on SSH stdin; it previously executed a remote script that never received the key.
 - Desktop server authorization no longer grants computer-to-Kindle access as a side effect.
+- `uninstall.sh` only reads `/dev/tty` when stdin is an interactive terminal (`[ -t 0 ]`), avoiding deadlocks when piped or run non-interactively in automated test harnesses.
 
 ### Changed
 - Reorganized the KUAL menu for setup status, SSH, server, Tailscale, keys, and maintenance; e-ink guidance stays within the display bounds and full detail remains in kterm.

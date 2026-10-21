@@ -121,8 +121,8 @@ To authorize your computer, connect the Kindle by USB and run from the extracted
 sshk download:
 
 ```bash
-./authorize-kindle.sh /path/to/Kindle
-# Or choose a computer public key explicitly:
+./authorize-kindle.sh
+# Or choose the mount path / computer public key explicitly:
 ./authorize-kindle.sh /path/to/Kindle ~/.ssh/id_rsa.pub
 ```
 
@@ -133,7 +133,7 @@ Eject USB, run **Setup & Maintenance > Install / Repair** once to activate
 sshk's SSH storage, then **SSH Server > Start Server** and **Server Status**.
 
 The two helpers serve separate directions: `authorize-server.sh user@server`
-authorizes the **Kindle on a remote server**; `authorize-kindle.sh MOUNT`
+authorizes the **Kindle on a remote server**; `authorize-kindle.sh [MOUNT]`
 authorizes **your computer on the Kindle**. Neither copies private keys.
 KUAL's **SSH Keys > Connection Setup Help** includes both workflows.
 
