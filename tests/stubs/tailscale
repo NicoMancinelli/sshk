@@ -1,3 +1,5 @@
 #!/bin/sh
-# Stub tailscale binary: only needs to exist for `which tailscale`.
+case "$1" in
+    status) printf '%s\n' '{"BackendState":"Running"}' ;;
+esac
 exit 0

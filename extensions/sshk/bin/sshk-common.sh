@@ -32,7 +32,7 @@
 sshk_known_hosts_flags() {
     if [ "${SSHK_TEST_FORCE_AUTO_ACCEPT:-0}" = "1" ]; then
         echo "-y"
-    elif [ -w "/root/.ssh/known_hosts" ] || touch /root/.ssh/known_hosts 2>/dev/null; then
+    elif [ -w "${SSHK_ROOT_HOME:-/root}/.ssh/known_hosts" ] || touch "${SSHK_ROOT_HOME:-/root}/.ssh/known_hosts" 2>/dev/null; then
         :
     else
         echo "-y"
@@ -98,19 +98,28 @@ sshk_lookup_alias() {
                 sub(/^.*:/, "", _port)
                 sub(/:[^:]*$/, "", _host)
             }
-            print _host "|" _port "|" $3
-            exit
+            key = ($3 ~ /^#/ || $3 == "-" ? "" : $3)
+            transport = ($3 ~ /^#/ || $4 == "" || $4 ~ /^#/ ? "direct" : $4)
+            result = _host "|" _port "|" key "|" transport
+            count++
         }
+        END { if (count>1) print "DUPLICATE"; else if (count==1) print result }
     ' "$_conf")
     [ -n "$_line" ] || return 1
+    if [ "$_line" = DUPLICATE ]; then
+        echo "sshk: duplicate alias: $_name; fix hosts.conf before connecting" >&2
+        exit 2
+    fi
     SSHK_ALIAS_HOST="${_line%%|*}"
     _rest="${_line#*|}"
     SSHK_ALIAS_PORT="${_rest%%|*}"
-    SSHK_ALIAS_KEY="${_rest#*|}"
+    _rest="${_rest#*|}"
+    SSHK_ALIAS_KEY="${_rest%%|*}"
+    SSHK_ALIAS_TRANSPORT="${_rest#*|}"
     # The three values above are this function's return values; the sourcing
     # wrapper reads them after we return, which shellcheck cannot see. The
     # no-op reference keeps SC2034 from firing.
-    : "$SSHK_ALIAS_HOST" "$SSHK_ALIAS_PORT" "$SSHK_ALIAS_KEY"
+    : "$SSHK_ALIAS_HOST" "$SSHK_ALIAS_PORT" "$SSHK_ALIAS_KEY" "$SSHK_ALIAS_TRANSPORT"
     return 0
 }
 

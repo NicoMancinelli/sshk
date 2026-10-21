@@ -14,25 +14,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build release zip
-        run: |
-          zip -r sshk.zip \
-            extensions \
-            install-to-kindle.sh \
-            install-to-kindle.bat \
-            install-to-kindle.ps1 \
-            authorize-server.sh \
-            QUICKSTART.md \
-            README.md \
-            CHANGELOG.md \
-            SUPPORTED-DEVICES.md \
-            LICENSE \
-            DROPBEAR-LICENSE \
-            -x "*.DS_Store*"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
 
-      - name: Generate Checksums
+      - name: Validate release candidate
         run: |
-          sha256sum sshk.zip > SHA256SUMS
+          ./tests/run-tests.sh
+          python3 tests/run-integration.py
+          python3 tests/package-release.py --output .
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

@@ -58,6 +58,26 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
+# Inspect the first positional target without changing argv. Dispatch before
+# direct transport rewrites aliases, so all caller options retain precedence.
+_skip=0
+for _arg do
+    if [ "$_skip" -eq 1 ]; then _skip=0; continue; fi
+    case "$_arg" in
+        -i|-p|-L|-R|-l|-o|-J) _skip=1 ;;
+        -*) ;;
+        *)
+            if sshk_lookup_alias "$CONF" "$_arg"; then
+                case "$SSHK_ALIAS_TRANSPORT" in
+                    tailscale) exec "$BINDIR/ssh-tailscale" "$@" ;;
+                    direct) ;;
+                    *) echo 'sshk: invalid saved transport; edit this host' >&2; exit 2 ;;
+                esac
+            fi
+            break ;;
+    esac
+done
+
 # Known hosts check. The shared probe (sshk-common.sh) yields "-y" only when
 # /root/.ssh/known_hosts cannot be created or written; tests force that branch
 # via SSHK_TEST_FORCE_AUTO_ACCEPT=1.
@@ -139,13 +159,14 @@ if [ $HAS_I -eq 0 ]; then
     SSHK_NATIVE_OPTS=""
     sshk_native_key_opts "$BINDIR"
     if [ -n "$SSHK_NATIVE_OPTS" ]; then
-        OPTS="$OPTS $SSHK_NATIVE_OPTS"
+        set -- -i "$BINDIR/kindle_native_key" "$@"
     fi
 fi
 
 # Inhibit screensaver while SSH is active (restores on exit)
 sshk_inhibit_screensaver
 
-"$BINDIR/dbclient" $OPTS "$@"
+[ -z "$OPTS" ] || set -- "$OPTS" "$@"
+"$BINDIR/dbclient" "$@"
 EXIT_CODE=$?
 exit $EXIT_CODE

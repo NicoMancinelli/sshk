@@ -12,8 +12,8 @@ set -e
 
 eips_print() {
     echo "sshk: $1"
-    eips 0 0 "                                                                                "
-    eips 0 0 "sshk: $1"
+    eips 0 0 "                                                                                " 2>/dev/null || :
+    eips 0 0 "sshk: $1" 2>/dev/null || :
 }
 
 BINDIR="$(cd "$(dirname "$0")" && pwd)"
@@ -35,7 +35,8 @@ fi
 # Run dropbearkey once and tee to a temp file so we can both extract the
 # public key line and grab the fingerprint without a second invocation.
 PUBKEY_TMP=$(mktemp "${TMPDIR:-/tmp}/sshk-pubkey.XXXXXX")
-trap 'rm -f "$PUBKEY_TMP"' EXIT INT TERM HUP
+trap 'rm -f "$PUBKEY_TMP" "${PUBKEY_TMP}.err"' EXIT
+trap 'exit 1' INT TERM HUP
 
 if ! "$BINDIR/dropbearkey" -y -f "$KEY" > "$PUBKEY_TMP" 2> "${PUBKEY_TMP}.err"; then
     cat "${PUBKEY_TMP}.err" >&2
@@ -54,6 +55,7 @@ printf '%s\n' "$PUBKEY_LINE" > "$PUBKEY_OUT"
 
 FINGERPRINT=$(grep '^Fingerprint' "$PUBKEY_TMP" | awk '{print $2}')
 if [ -n "$FINGERPRINT" ]; then
-    eips_print "Saved: $FINGERPRINT"
+    echo "Fingerprint: $FINGERPRINT"
 fi
+eips_print "Saved public key to USB root: ${PUBKEY_OUT##*/}"
 cat "$PUBKEY_OUT"

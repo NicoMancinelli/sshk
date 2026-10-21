@@ -24,7 +24,7 @@ jobs:
       - name: Validate Shell Script Syntax (sh -n)
         run: |
           echo "=== Checking shell syntax ==="
-          for f in extensions/sshk/bin/* install-to-kindle.sh authorize-server.sh; do
+          for f in extensions/sshk/bin/* install-to-kindle.sh authorize-server.sh authorize-kindle.sh; do
             if [ -f "$f" ] && [ "$f" != "extensions/sshk/bin/dropbearmulti" ]; then
               sh -n "$f" && echo "✓ $f" || { echo "✗ Syntax error in $f"; exit 1; }
             fi
@@ -81,7 +81,8 @@ jobs:
             extensions/sshk/bin/scp \
             extensions/sshk/bin/scp-tailscale \
             install-to-kindle.sh \
-            authorize-server.sh
+            authorize-server.sh \
+            authorize-kindle.sh
 
       - name: Test Host Alias Resolution
         run: |
@@ -95,6 +96,11 @@ jobs:
       - name: Run Functional Tests (wrapper argv behavior)
         run: |
           ./tests/run-tests.sh
+
+      - name: Integration and package checks
+        run: |
+          python3 tests/run-integration.py
+          python3 tests/package-release.py
 
       - name: Verify binary portability (static ARMv5 soft-float)
         run: |

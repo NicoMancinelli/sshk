@@ -6,12 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.7] - 2026-10-21
+
+### Added
+- KUAL Setup & Status and key-direction guidance, including `authorize-kindle.sh MOUNT [PUBLIC_KEY]` for explicitly authorizing computer access over USB.
+- Separate Start Server and Stop Server actions; exact daemon ownership/listener checks, public-key-only foreground Dropbear, reliable failure reporting, stale-PID protection, and a reboot notice for a pre-upgrade v1.6 daemon.
+- Reversible install/repair and uninstall behavior that preserves existing SSH configuration, keys, authorized users, saved hosts, and later kterm edits.
+- Saved-host edit/remove with confirmation, field validation, duplicate checks, and atomic updates.
+- Optional Tailscale support with status/help, custom executable/socket discovery, quoted userspace `nc` proxy commands, custom ports, SCP, and saved-host routing through SSH/SCP. Tailscale remains a separately installed and managed service.
+- Integration suites and release packaging checks for menu targets, executable bits, version agreement, archive contents, and private-key exclusion.
+
+### Fixed
+- `authorize-server.sh` now transfers the validated Kindle public key on SSH stdin; it previously executed a remote script that never received the key.
+- Desktop server authorization no longer grants computer-to-Kindle access as a side effect.
+
+### Changed
+- Reorganized the KUAL menu for setup status, SSH, server, Tailscale, keys, and maintenance; e-ink guidance stays within the display bounds and full detail remains in kterm.
+
 ## [1.6] - 2026-10-18
 
 ### Added
 - **`ssh` with no arguments opens the quick-connect menu.** On a terminal (and when `ssh-menu` sits next to the wrapper) typing just `ssh` now shows the numbered picker, so the whole tool can be driven by one word. Non-tty/scripted callers still get usage and exit 1, so automation is unaffected.
 - **`-h` / `--help` on `ssh`, `ssh-tailscale` and `scp-tailscale`.** Help is handled by the wrapper itself (never forwarded to `dbclient`/`scp`) and lists the aliases saved in `hosts.conf`, so help doubles as a host list. When `hosts.conf` is empty it points the user at `ssh-menu` instead.
-- **`ssh-menu` is forgiving and safer to edit with.** The prompt now also accepts a full alias name or a raw `user@host[:port]` (not just the menu number), and "Add Host Alias" validates the alias and target before writing, so a stray space cannot corrupt the whitespace-separated `hosts.conf` format.
+- **`ssh-menu` is forgiving and safer to use.** The prompt now also accepts a full alias name or a raw `user@host[:port]` (not just the menu number), and "Add Host Alias" validates the alias and target before writing, so a stray space cannot corrupt the whitespace-separated `hosts.conf` format.
 - **`📊 Server Status`** action under KUAL -> `sshk: SSH Client` -> `🔁 SSH Server (Port 2222)`, showing whether the inbound server is running and the exact `ssh root@<ip> -p 2222` command to connect.
 - **`server-common.sh`**: the inbound-server scripts now share one library (port, pidfile, dropbear process-match pattern, eips and IP helpers), mirroring `sshk-common.sh` on the client side.
 

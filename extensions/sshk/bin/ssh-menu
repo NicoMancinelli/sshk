@@ -8,6 +8,19 @@ case "$0" in
 esac
 BINDIR="$(cd "$BINDIR" && pwd)"
 CONF="$BINDIR/../hosts.conf"
+# shellcheck disable=SC1091
+. "$BINDIR/sshk-common.sh"
+connect_saved() {
+    transport=direct
+    if sshk_lookup_alias "$CONF" "$1"; then
+        transport=$SSHK_ALIAS_TRANSPORT
+    fi
+    case "$transport" in
+        direct) exec "$BINDIR/ssh" "$1" ;;
+        tailscale) exec "$BINDIR/ssh-tailscale" "$1" ;;
+        *) echo "Unknown saved transport: $transport. Edit this host." >&2; exit 1 ;;
+    esac
+}
 
 clear 2>/dev/null || echo ""
 
@@ -71,13 +84,19 @@ if [ -f "$CONF" ]; then
         rest="${rest#"$alias_target"}"
         rest="${rest#"${rest%%[![:space:]]*}"}"
         alias_key="${rest%%[[:space:]]*}"
+        rest="${rest#"$alias_key"}"
+        rest="${rest#"${rest%%[![:space:]]*}"}"
+        transport="${rest%%[[:space:]]*}"
+        case "$alias_key" in '-'|'#'*) alias_key="" ;; esac
+        transport_info=""
+        [ "$transport" != tailscale ] || transport_info=" [Tailscale]"
 
         key_info=""
         if [ -n "$alias_key" ]; then
             key_info=" (key: $alias_key)"
         fi
 
-        printf "  [%d] %-12s -> %s%s\n" "$COUNT" "$alias_name" "$alias_target" "$key_info"
+        printf "  [%d] %-12s -> %s%s\n" "$COUNT" "$alias_name" "$alias_target" "$key_info$transport_info"
         ALIAS_SET="$ALIAS_SET:$alias_name"
         if [ -z "$ALIASES" ]; then
             ALIASES="$alias_name"
@@ -97,6 +116,7 @@ fi
 echo ""
 echo "  [c] Custom SSH           [t] Custom Tailscale"
 echo "  [a] Add Host Alias       [k] List SSH Keys"
+echo "  [e] Edit Host Alias      [d] Remove Host Alias"
 echo "  [r] Refresh E-Ink Screen [q] Quit"
 echo ""
 printf "Enter choice: "
@@ -133,7 +153,7 @@ case "$choice" in
         echo ""
         echo "--- Add New Host Alias ---"
         printf "Alias name (e.g. myserver): "
-        read -r new_alias
+        read -r new_alias || exit 0
         case "$new_alias" in
             "")
                 echo "Cancelled."
@@ -151,7 +171,7 @@ case "$choice" in
         esac
 
         printf "Connection target (user@host[:port]): "
-        read -r new_target
+        read -r new_target || exit 0
         case "$new_target" in
             "")
                 echo "Cancelled."
@@ -168,16 +188,53 @@ case "$choice" in
         esac
 
         printf "Custom key name (optional, press Enter for default): "
-        read -r new_key
+        read -r new_key || exit 0
 
-        entry="$new_alias $new_target"
-        if [ -n "$new_key" ]; then
-            entry="$entry $new_key"
+        printf "Transport (direct/tailscale) [direct]: "
+        read -r new_transport || exit 0
+        "$BINDIR/hosts-manage.sh" add "$new_alias" "$new_target" "$new_key" "${new_transport:-direct}"
+        sleep 1
+        exec "$0"
+        ;;
+    e|E|d|D)
+        printf "Saved alias name (blank cancels): "
+        read -r edit_alias || exit 0
+        [ -n "$edit_alias" ] || exec "$0"
+        case "$edit_alias" in
+            *[!A-Za-z0-9_-]*) echo "Invalid alias name."; sleep 1; exec "$0" ;;
+        esac
+        matches=$(awk -v name="$edit_alias" '$1==name { n++ } END { print n+0 }' "$CONF" 2>/dev/null)
+        if [ "$matches" != 1 ]; then
+            echo "Expected one matching alias; found ${matches:-0}."
+            sleep 1
+            exec "$0"
         fi
-
-        touch "$CONF"
-        echo "$entry" >> "$CONF"
-        echo "✓ Added '$new_alias' to hosts.conf!"
+        case "$choice" in
+            d|D)
+                printf "Remove '%s'? Type YES to confirm: " "$edit_alias"
+                read -r confirm || exit 0
+                if [ "$confirm" = YES ]; then
+                    "$BINDIR/hosts-manage.sh" remove "$edit_alias"
+                else
+                    echo "Cancelled."
+                fi
+                ;;
+            *)
+                old_target=$(awk -v name="$edit_alias" '$1==name { print $2 }' "$CONF")
+                old_key=$(awk -v name="$edit_alias" '$1==name && $3 !~ /^#/ && $3 != "-" { print $3 }' "$CONF")
+                printf "Target [%s] (Enter keeps): " "$old_target"
+                read -r new_target || exit 0
+                printf "Key [%s] (Enter keeps, '-' uses default): " "${old_key:-default}"
+                read -r new_key || exit 0
+                new_target=${new_target:-$old_target}
+                new_key=${new_key:-$old_key}
+                [ "$new_key" != - ] || new_key=""
+                sshk_lookup_alias "$CONF" "$edit_alias"
+                printf "Transport [%s] (direct/tailscale, Enter keeps): " "$SSHK_ALIAS_TRANSPORT"
+                read -r new_transport || exit 0
+                "$BINDIR/hosts-manage.sh" edit "$edit_alias" "$new_target" "$new_key" "${new_transport:-$SSHK_ALIAS_TRANSPORT}"
+                ;;
+        esac
         sleep 1
         exec "$0"
         ;;
@@ -201,7 +258,7 @@ case "$choice" in
         if [ -n "$selected_alias" ]; then
             echo ""
             echo "Connecting to $selected_alias..."
-            exec "$BINDIR/ssh" "$selected_alias"
+            connect_saved "$selected_alias"
         fi
 
         # Be forgiving: also accept the alias name typed in full, or a raw
@@ -218,7 +275,7 @@ case "$choice" in
         if [ -n "$_direct" ]; then
             echo ""
             echo "Connecting to $choice..."
-            exec "$BINDIR/ssh" "$choice"
+            connect_saved "$choice"
         fi
 
         echo "Invalid choice: '$choice'"
