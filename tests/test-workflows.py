@@ -182,6 +182,32 @@ class Workflows(unittest.TestCase):
                     self.assertTrue(os.access(ROOT / 'extensions/sshk' / item['action'], os.X_OK))
         check(json.loads((ROOT / 'extensions/sshk/menu.json').read_text())['items'])
 
+    def test_kterm_landscape_dpi_and_layout(self):
+        kterm_dir = self.us / 'extensions/kterm'
+        kterm_bin = kterm_dir / 'bin/kterm'
+        kterm_bin.parent.mkdir(parents=True, exist_ok=True)
+        layouts = kterm_dir / 'layouts'
+        layouts.mkdir(parents=True, exist_ok=True)
+        (layouts / 'keyboard-300dpi.xml').write_text('<layout/>')
+        log = self.root / 'var/log'
+        log.mkdir(parents=True, exist_ok=True)
+        (log / 'Xorg.0.log').write_text('(300, 300) DPI\n')
+
+        args_log = self.root / 'kterm_args.log'
+        stub = f'#!/bin/sh\nprintf "%s\\n" "$@" > "{args_log}"\n'
+        kterm_bin.write_text(stub)
+        kterm_bin.chmod(0o755)
+
+        script = self.bin / 'kterm-landscape.sh'
+        self.run_cmd([script])
+        args = args_log.read_text().splitlines()
+        self.assertIn('-o', args)
+        self.assertIn('R', args)
+        self.assertIn('-s', args)
+        self.assertIn('8', args)
+        self.assertIn('-e', args)
+        self.assertTrue(any('ssh-menu' in a for a in args))
+
 
 if __name__ == '__main__':
     unittest.main()

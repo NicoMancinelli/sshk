@@ -32,10 +32,10 @@ for arg in "$@"; do
 done
 
 if [ "$FORCE" -ne 1 ]; then
-    # Prefer /dev/tty so KUAL (which doesn't connect stdin) still works
-    # when the user runs this from kterm directly. Fall back to stdin if
-    # /dev/tty isn't available (e.g. piped from a non-interactive shell).
-    if [ -r /dev/tty ]; then
+    # Prefer /dev/tty only when stdin is an interactive terminal so KUAL
+    # still works when run from kterm directly, but piped input (e.g. tests)
+    # reads from stdin rather than hanging on /dev/tty.
+    if [ -t 0 ] && [ -r /dev/tty ]; then
         TTY=/dev/tty
     else
         TTY=/dev/stdin

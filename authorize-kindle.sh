@@ -1,12 +1,48 @@
 #!/bin/sh
 # Authorize a computer's PUBLIC key on a USB-mounted Kindle.
 set -eu
-if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
-    echo "Usage: $0 KINDLE_MOUNT [COMPUTER_PUBLIC_KEY.pub]" >&2
+
+MOUNT=""
+KEY=""
+
+if [ "$#" -eq 0 ]; then
+    :
+elif [ "$#" -eq 1 ]; then
+    if [ -f "$1" ] && [ ! -d "$1" ]; then
+        KEY="$1"
+    else
+        MOUNT="$1"
+    fi
+elif [ "$#" -eq 2 ]; then
+    MOUNT="$1"
+    KEY="$2"
+else
+    echo "Usage: $0 [KINDLE_MOUNT] [COMPUTER_PUBLIC_KEY.pub]" >&2
     exit 2
 fi
-MOUNT=$1
-KEY=${2:-"$HOME/.ssh/id_ed25519.pub"}
+
+if [ -z "$MOUNT" ]; then
+    for path in \
+        "/Volumes/Kindle" \
+        "/Volumes/Kindle"* \
+        "/run/media/${USER:-root}/Kindle" \
+        "/media/${USER:-root}/Kindle" \
+        "/media/Kindle" \
+        "/mnt/Kindle"; do
+        if [ -d "$path/extensions/sshk" ]; then
+            MOUNT="$path"
+            break
+        fi
+    done
+fi
+
+if [ -z "$MOUNT" ]; then
+    echo "Usage: $0 KINDLE_MOUNT [COMPUTER_PUBLIC_KEY.pub]" >&2
+    echo "Error: Kindle mount not detected automatically. Please specify KINDLE_MOUNT." >&2
+    exit 2
+fi
+
+KEY=${KEY:-"$HOME/.ssh/id_ed25519.pub"}
 if [ ! -d "$MOUNT/extensions/sshk" ]; then
     echo "No sshk installation at $MOUNT/extensions/sshk" >&2
     exit 1
