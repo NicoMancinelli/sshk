@@ -26,10 +26,10 @@ if [ ! -d "$EXT_SOURCE" ]; then
 fi
 
 # Step 1: Detect Kindle mount point
-KINDLE_PATH=""
+KINDLE_PATH="${SSHK_KINDLE_PATH:-}"
 
 # Check macOS mounts
-if [ -d "/Volumes/Kindle" ]; then
+if [ -z "$KINDLE_PATH" ] && [ -d "/Volumes/Kindle" ]; then
     KINDLE_PATH="/Volumes/Kindle"
 fi
 
@@ -72,34 +72,36 @@ echo "${BLUE}Installing sshk extension to Kindle...${NC}"
 mkdir -p "$KINDLE_PATH/extensions"
 mkdir -p "$TARGET_DIR"
 
-# Copy files while preserving existing user keys and config if present
-if [ -f "$TARGET_DIR/hosts.conf" ]; then
-    cp -r "$EXT_SOURCE"/* "$TARGET_DIR/" 2>/dev/null || true
-    # Don't overwrite existing hosts.conf
-else
-    cp -r "$EXT_SOURCE"/* "$TARGET_DIR/"
-fi
+# Overlay only release files. Preserve all configuration, private keys and state.
+# Do not follow destination symlinks into unrelated directories.
+copy_release() {
+    for src in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+        [ -e "$src" ] || continue
+        name=${src##*/}
+        case "$name" in
+            .ssh|state|logs|*.log|*.pid|kindle_*_key|kindle_*_key.pub|tailscaled.state|tailscaled.sock) continue ;;
+            hosts.conf) if [ -e "$2/$name" ] || [ -L "$2/$name" ]; then continue; fi ;;
+        esac
+        dest="$2/$name"
+        if [ -L "$dest" ]; then
+            echo "Error: refusing to overwrite symlink $dest" >&2
+            exit 1
+        fi
+        if [ -d "$src" ]; then
+            mkdir -p "$dest"
+            # Subshell keeps recursive loop variables local in POSIX sh.
+            (copy_release "$src" "$dest")
+        else
+            cp "$src" "$dest"
+        fi
+    done
+}
+[ ! -L "$TARGET_DIR" ] || { echo "Error: extension directory is a symlink" >&2; exit 1; }
+copy_release "$EXT_SOURCE" "$TARGET_DIR"
 
 echo "${GREEN}✓ Copied sshk to $TARGET_DIR${NC}"
 
-# Step 3: Check and auto-patch kterm if present
-KTERM_SH="$KINDLE_PATH/extensions/kterm/bin/kterm.sh"
-if [ -f "$KTERM_SH" ]; then
-    if grep -q "extensions/sshk/bin" "$KTERM_SH"; then
-        echo "${GREEN}✓ kterm PATH is already configured for sshk${NC}"
-    else
-        echo "${BLUE}Pre-configuring kterm PATH...${NC}"
-        if [ ! -f "${KTERM_SH}.orig" ]; then
-            cp "$KTERM_SH" "${KTERM_SH}.orig"
-        fi
-        sed -i '' 's|#!/bin/sh|#!/bin/sh\nexport PATH=/mnt/us/extensions/sshk/bin:$PATH|' "$KTERM_SH" 2>/dev/null || \
-        sed -i 's|#!/bin/sh|#!/bin/sh\nexport PATH=/mnt/us/extensions/sshk/bin:$PATH|' "$KTERM_SH"
-        echo "${GREEN}✓ Pre-patched kterm.sh PATH${NC}"
-    fi
-else
-    echo "${YELLOW}ℹ Note: kterm not found at extensions/kterm.${NC}"
-    echo "  Remember to install kterm on your Kindle for terminal access."
-fi
+# Device Install / Repair performs kterm integration after USB eject.
 
 # Step 4: Summary and instructions
 echo ""
@@ -108,7 +110,7 @@ echo "${BOLD}${GREEN}   🎉 Installation Complete! Next Steps:             ${NC
 echo "${BOLD}${GREEN}====================================================${NC}"
 echo ""
 echo "1. ${BOLD}Safely eject${NC} your Kindle from your computer."
-echo "2. Open ${BOLD}KUAL${NC} on your Kindle -> tap ${BOLD}sshk: SSH Client${NC} -> ${BOLD}1-Tap Setup${NC}."
+echo "2. Open ${BOLD}KUAL${NC} on your Kindle -> tap ${BOLD}sshk: SSH Client${NC} -> ${BOLD}Setup & Maintenance${NC} -> ${BOLD}Install / Repair${NC}."
 echo "3. Open ${BOLD}kterm${NC} and type ${BLUE}ssh${NC} -- that opens the quick-connect menu."
 echo "     (or connect directly: ${BLUE}ssh user@host${NC} / ${BLUE}ssh-tailscale user@host${NC})"
 echo ""

@@ -1,70 +1,103 @@
 {
   "items": [
     {
-      "name": "⚡ 1-Tap Setup (Install & Key)",
+      "name": "Open SSH (Landscape)",
       "priority": 0,
-      "action": "bin/install.sh"
-    },
-    {
-      "name": "🖥️ Open SSH Terminal (Landscape)",
-      "priority": 1,
       "action": "bin/kterm-landscape.sh"
     },
     {
-      "name": "🔁 SSH Server (Port 2222)",
+      "name": "Setup & Status",
+      "action": "bin/setup-status.sh",
+      "priority": 1
+    },
+    {
+      "name": "SSH Server (Port 2222)",
       "priority": 2,
       "menu": {
         "items": [
           {
-            "name": "🔄 Start / Stop",
-            "priority": 0,
-            "action": "bin/server-toggle.sh"
+            "name": "Server Status",
+            "action": "bin/server-status.sh",
+            "priority": 0
           },
           {
-            "name": "📊 Server Status",
-            "priority": 1,
-            "action": "bin/server-status.sh"
+            "name": "Start Server",
+            "action": "bin/server-start.sh",
+            "priority": 1
+          },
+          {
+            "name": "Stop Server",
+            "action": "bin/server-stop.sh",
+            "priority": 2
           }
         ]
       }
     },
     {
-      "name": "🔑 SSH Keys",
-      "priority": 3,
+      "name": "Tailscale",
       "menu": {
         "items": [
           {
-            "name": "📋 List Keys",
-            "priority": 0,
+            "name": "Status",
+            "action": "bin/tailscale-status.sh",
+            "priority": 0
+          },
+          {
+            "name": "Setup Help",
+            "action": "bin/tailscale-help.sh",
+            "priority": 1
+          }
+        ]
+      },
+      "priority": 3
+    },
+    {
+      "name": "SSH Keys",
+      "priority": 4,
+      "menu": {
+        "items": [
+          {
+            "name": "Connection Setup Help",
+            "action": "bin/key-help.sh",
+            "priority": 0
+          },
+          {
+            "name": "List Keys",
+            "priority": 1,
             "action": "bin/listkeys.sh"
           },
           {
-            "name": "🔑 Generate New Key",
-            "priority": 1,
+            "name": "Create Default Key",
+            "priority": 2,
             "action": "bin/genkey.sh"
           },
           {
-            "name": "📤 Export Public Key",
-            "priority": 2,
+            "name": "Export Default Public Key",
+            "priority": 3,
             "action": "bin/showkey.sh"
           }
         ]
       }
     },
     {
-      "name": "⚙️ More",
-      "priority": 4,
+      "name": "Setup & Maintenance",
+      "priority": 5,
       "menu": {
         "items": [
           {
-            "name": "ℹ️ About sshk",
+            "name": "Install / Repair",
             "priority": 0,
+            "action": "bin/install.sh"
+          },
+          {
+            "name": "About sshk",
+            "priority": 1,
             "action": "bin/version.sh"
           },
           {
-            "name": "🗑️ Uninstall",
-            "priority": 1,
-            "action": "bin/uninstall.sh"
+            "name": "Uninstall sshk",
+            "priority": 2,
+            "action": "bin/uninstall-menu.sh"
           }
         ]
       }

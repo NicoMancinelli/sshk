@@ -1,3 +1,4 @@
+$ErrorActionPreference = "Stop"
 # install-to-kindle.ps1 - 1-Click Desktop Installer for sshk (Windows PowerShell)
 
 Write-Host ""
@@ -53,35 +54,40 @@ if (-not (Test-Path $TargetDir)) {
     New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
 }
 
-Copy-Item -Path "$ExtSource\*" -Destination $TargetDir -Recurse -Force
-Write-Host "[+] Copied sshk files to Kindle" -ForegroundColor Green
-
-# Step 3: Check and auto-patch kterm if present
-$KtermSh = Join-Path $KindleDrive "extensions\kterm\bin\kterm.sh"
-if (Test-Path $KtermSh) {
-    $content = Get-Content $KtermSh -Raw
-    if ($content -notmatch "extensions/sshk/bin") {
-        Write-Host "[*] Pre-configuring kterm PATH..." -ForegroundColor Blue
-        $orig = Join-Path $KindleDrive "extensions\kterm\bin\kterm.sh.orig"
-        if (-not (Test-Path $orig)) {
-            Copy-Item $KtermSh $orig
-        }
-        $patched = "#!/bin/sh`nexport PATH=/mnt/us/extensions/sshk/bin:`$PATH`n" + ($content -replace "^#!/bin/sh`r?`n", "")
-        [System.IO.File]::WriteAllText($KtermSh, $patched)
-        Write-Host "[+] Pre-patched kterm.sh PATH" -ForegroundColor Green
-    } else {
-        Write-Host "[+] kterm PATH is already configured for sshk" -ForegroundColor Green
+# Overlay release files; preserve user configuration, keys, logs and state.
+function Copy-Release($Source, $Destination) {
+    if ((Get-Item -LiteralPath $Destination).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        throw "Refusing to overwrite linked directory: $Destination"
     }
-} else {
-    Write-Host "[i] Note: kterm not found at extensions\kterm. Make sure kterm is installed." -ForegroundColor Yellow
+    foreach ($Item in Get-ChildItem -LiteralPath $Source -Force) {
+        $Name = $Item.Name
+        if ($Name -in @('.ssh', 'state', 'logs', 'tailscaled.state', 'tailscaled.sock') -or
+            $Name -like 'kindle_*_key*' -or $Name -like '*.log' -or $Name -like '*.pid') { continue }
+        $Dest = Join-Path $Destination $Name
+        if ($Name -eq 'hosts.conf' -and (Test-Path -LiteralPath $Dest)) { continue }
+        if (Test-Path -LiteralPath $Dest) {
+            if ((Get-Item -LiteralPath $Dest -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                throw "Refusing to overwrite link: $Dest"
+            }
+        }
+        if ($Item.PSIsContainer) {
+            New-Item -ItemType Directory -Path $Dest -Force | Out-Null
+            Copy-Release $Item.FullName $Dest
+        } else {
+            Copy-Item -LiteralPath $Item.FullName -Destination $Dest -Force
+        }
+    }
 }
+Copy-Release $ExtSource $TargetDir
+Write-Host "[+] Copied release files; existing configuration retained" -ForegroundColor Green
+# Device Install / Repair performs kterm integration after USB eject.
 
 Write-Host ""
 Write-Host "====================================================" -ForegroundColor Green
 Write-Host "   Installation Complete! Next Steps:               " -ForegroundColor Green
 Write-Host "====================================================" -ForegroundColor Green
 Write-Host "1. Safely eject your Kindle."
-Write-Host "2. Open KUAL on Kindle -> tap 'sshk: SSH Client' -> '1-Tap Setup'."
+Write-Host "2. Open KUAL on Kindle -> tap 'sshk: SSH Client' -> 'Setup & Maintenance' -> 'Install / Repair'."
 Write-Host "3. Open kterm and run 'ssh user@host'!"
 Write-Host ""
 Pause

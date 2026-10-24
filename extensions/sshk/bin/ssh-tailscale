@@ -47,123 +47,69 @@ case "$1" in
         ;;
 esac
 
-# Known hosts probe (shared with the plain `ssh` wrapper via sshk-common.sh so
-# Tailscale paths get the same MITM protection as LAN paths). Tailscale
-# tailnets frequently host personal devices without unique usernames, so
-# auto-accepting every host key here would be a regression. Tests force the
-# auto-accept branch via SSHK_TEST_FORCE_AUTO_ACCEPT=1.
-OPTS=$(sshk_known_hosts_flags)
-
-PORT=22
+# shellcheck disable=SC1091
+. "$BINDIR/tailscale-common.sh"
+PORT=""
 HAS_I=0
 TARGET=""
-HOST=""
-
-# Return values filled in by sshk_lookup_alias below; initialised so the shell
-# never sees an unset read.
-SSHK_ALIAS_HOST=""
-SSHK_ALIAS_PORT=""
-SSHK_ALIAS_KEY=""
-
+# Rotate processed options behind unprocessed arguments, preserving argv.
 COUNT=$#
 i=0
-while [ $i -lt $COUNT ]; do
-    arg="$1"
-    shift
-    i=$((i + 1))
-    
+while [ "$i" -lt "$COUNT" ]; do
+    arg=$1; shift; i=$((i + 1))
     case "$arg" in
-        -i)
-            if [ $i -lt $COUNT ]; then
-                keyarg="$1"
-                shift
-                i=$((i + 1))
-                set -- "$@" "-i" "$(sshk_map_identity "$keyarg" "$BINDIR")"
-                HAS_I=1
-            else
-                set -- "$@" "-i"
-            fi
-            ;;
-        -p)
-            if [ $i -lt $COUNT ]; then
-                PORT="$1"
-                shift
-                i=$((i + 1))
-            fi
-            ;;
-        -L|-R|-l)
-            set -- "$@" "$arg"
-            if [ $i -lt $COUNT ]; then
-                set -- "$@" "$1"
-                shift
-                i=$((i + 1))
-            fi
-            ;;
-        -*)
-            set -- "$@" "$arg"
-            ;;
+        -i|-p|-L|-R|-l|-o)
+            [ "$i" -lt "$COUNT" ] || { echo "sshk: $arg needs a value" >&2; exit 2; }
+            value=$1; shift; i=$((i + 1))
+            case "$arg" in
+                -i) set -- "$@" -i "$(sshk_map_identity "$value" "$BINDIR")"; HAS_I=1 ;;
+                -p) PORT=$value ;;
+                *) set -- "$@" "$arg" "$value" ;;
+            esac ;;
+        -i?*) set -- "$@" -i "$(sshk_map_identity "${arg#-i}" "$BINDIR")"; HAS_I=1 ;;
+        -p?*) PORT=${arg#-p} ;;
+        -J*) echo 'sshk: -J is reserved for Tailscale transport' >&2; exit 2 ;;
+        -*) set -- "$@" "$arg" ;;
         *)
-            TARGET="$arg"
-            case "$TARGET" in
-                *@*) 
-                    HOST="${TARGET#*@}"
-                    set -- "$@" "$TARGET"
-                    ;;
-                *)
-                    if sshk_lookup_alias "$CONF" "$TARGET"; then
-                        if [ -n "$SSHK_ALIAS_PORT" ]; then
-                            PORT="$SSHK_ALIAS_PORT"
-                        fi
-                        if [ -n "$SSHK_ALIAS_KEY" ] && [ $HAS_I -eq 0 ]; then
-                            AKEY=$(sshk_identity_path "$BINDIR" "$SSHK_ALIAS_KEY")
-                            if [ -f "$AKEY" ]; then
-                                set -- "$@" "-i" "$AKEY"
-                                HAS_I=1
-                            fi
-                        fi
-                        HOST="${SSHK_ALIAS_HOST#*@}"
-                        set -- "$@" "$SSHK_ALIAS_HOST"
-                    else
-                        HOST="${TARGET#*@}"
-                        set -- "$@" "$TARGET"
-                    fi
-                    ;;
+            TARGET=$arg
+            case "$TARGET" in *:) echo 'sshk: missing port after colon' >&2; exit 2 ;; esac
+            if sshk_lookup_alias "$CONF" "$TARGET"; then
+                TARGET=$SSHK_ALIAS_HOST
+                PORT=${PORT:-$SSHK_ALIAS_PORT}
+                if [ -n "$SSHK_ALIAS_KEY" ] && [ "$HAS_I" -eq 0 ]; then
+                    set -- "$@" -i "$(sshk_identity_path "$BINDIR" "$SSHK_ALIAS_KEY")"
+                    HAS_I=1
+                fi
+            else
+                case "$TARGET" in
+                    *:*)
+                        PORT=${PORT:-${TARGET##*:}}
+                        TARGET=${TARGET%:*} ;;
+                esac
+            fi
+            HOST=${TARGET#*@}
+            # DNS names and IPv4 are supported; reject ambiguous IPv6 syntax.
+            case "$HOST" in
+                ''|-*|*[!A-Za-z0-9._-]*) echo 'sshk: invalid Tailscale hostname (use a DNS name or IPv4)' >&2; exit 2 ;;
             esac
-            
-            while [ $i -lt $COUNT ]; do
-                set -- "$@" "$1"
-                shift
-                i=$((i + 1))
-            done
-            ;;
+            set -- "$@" "$TARGET"
+            while [ "$i" -lt "$COUNT" ]; do
+                arg=$1; shift; set -- "$@" "$arg"; i=$((i + 1))
+            done ;;
     esac
 done
-
-if [ -z "$HOST" ]; then
-    echo "sshk: missing target" >&2
-    exit 1
-fi
-
-if [ -f "/mnt/us/extensions/tailscale/bin/tailscale" ]; then
-    TAILSCALE="/mnt/us/extensions/tailscale/bin/tailscale"
-elif command -v tailscale >/dev/null 2>&1; then
-    TAILSCALE="tailscale"
-else
-    echo "sshk: tailscale binary not found at /mnt/us/extensions/tailscale/bin/tailscale or in PATH" >&2
-    exit 1
-fi
-
-if [ $HAS_I -eq 0 ]; then
-    SSHK_NATIVE_OPTS=""
+[ -n "$TARGET" ] || { echo 'sshk: missing target' >&2; exit 2; }
+PORT=${PORT:-22}
+case "$PORT" in ''|*[!0-9]*|??????*) echo 'sshk: invalid port' >&2; exit 2 ;; esac
+# shellcheck disable=SC2015
+[ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || { echo 'sshk: port must be 1-65535' >&2; exit 2; }
+sshk_tailscale_find && sshk_tailscale_ready || exit 1
+if [ "$HAS_I" -eq 0 ]; then
     sshk_native_key_opts "$BINDIR"
-    if [ -n "$SSHK_NATIVE_OPTS" ]; then
-        OPTS="$OPTS $SSHK_NATIVE_OPTS"
-    fi
+    [ ! -f "$BINDIR/kindle_native_key" ] || set -- -i "$BINDIR/kindle_native_key" "$@"
 fi
-
-# Inhibit screensaver while SSH is active (restores on exit)
+HOST_FLAGS=$(sshk_known_hosts_flags)
+[ -z "$HOST_FLAGS" ] || set -- "$HOST_FLAGS" "$@"
 sshk_inhibit_screensaver
-
-"$DBCLIENT" $OPTS -J "$TAILSCALE nc $HOST $PORT" "$@"
-EXIT_CODE=$?
-exit $EXIT_CODE
+"$DBCLIENT" -p "$PORT" -J "$(sshk_tailscale_proxy "$HOST" "$PORT")" "$@"
+exit $?

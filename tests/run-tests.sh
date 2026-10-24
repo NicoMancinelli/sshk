@@ -27,7 +27,7 @@ BIN="$SANDBOX/bin"
 mkdir -p "$BIN"
 # ssh / ssh-tailscale / scp-tailscale source sshk-common.sh from BINDIR, so it
 # has to be staged alongside them.
-for wrapper in ssh ssh-tailscale scp scp-tailscale sshk-common.sh; do
+for wrapper in ssh ssh-tailscale scp scp-tailscale sshk-common.sh tailscale-common.sh scp-common.sh; do
     cp "$ROOT/extensions/sshk/bin/$wrapper" "$BIN/" || exit 1
 done
 cp "$ROOT"/tests/stubs/* "$BIN/" || exit 1
@@ -39,11 +39,13 @@ SSHK_TEST_LOG="$SANDBOX/dbclient.log"
 LIPC_LOG="$SANDBOX/lipc.log"
 export SSHK_TEST_LOG LIPC_LOG
 
+export SSHK_ROOT_HOME="$SANDBOX/root"
+mkdir -p "$SSHK_ROOT_HOME/.ssh"
 HOSTS_CONF="$SANDBOX/hosts.conf"
 NATIVE_KEY="$BIN/kindle_native_key"
 
 # Mirror the wrapper's own probe: does OPTS get a leading "-y"?
-if [ -w /root/.ssh/known_hosts ] || touch /root/.ssh/known_hosts 2>/dev/null; then
+if [ -w "$SSHK_ROOT_HOME/.ssh/known_hosts" ] || touch "$SSHK_ROOT_HOME/.ssh/known_hosts" 2>/dev/null; then
     Y=""
 else
     Y="-y"
@@ -178,29 +180,29 @@ assert_rc "no arguments -> usage error (exit 1)" "1" "$?"
 
 reset_case
 "$BIN/ssh-tailscale" -L 8080:localhost:80 >/dev/null 2>&1
-assert_rc "options but no target -> error (exit 1)" "1" "$?"
+assert_rc "options but no target -> error (exit 2)" "2" "$?"
 
 reset_case
 "$BIN/ssh-tailscale" user@myhost.example >/dev/null 2>&1
 assert_dbclient_args "plain target tunnels via tailscale nc" \
-    "$Y" -i "$NATIVE_KEY" -J "tailscale nc myhost.example 22" user@myhost.example
+    "$Y" -p 22 -J "'$BIN/tailscale' nc 'myhost.example' '22'" -i "$NATIVE_KEY" user@myhost.example
 
 reset_case
 "$BIN/ssh-tailscale" -p 2223 user@myhost.example >/dev/null 2>&1
 assert_dbclient_args "custom port reaches ProxyCommand" \
-    "$Y" -i "$NATIVE_KEY" -J "tailscale nc myhost.example 2223" user@myhost.example
+    "$Y" -p 2223 -J "'$BIN/tailscale' nc 'myhost.example' '2223'" -i "$NATIVE_KEY" user@myhost.example
 
 reset_case
 write_hosts "tsbox u@10.0.0.5:2280 w\n"
 : > "$BIN/kindle_w_key"
 "$BIN/ssh-tailscale" tsbox >/dev/null 2>&1
 assert_dbclient_args "alias resolves host, port and named key over tailscale" \
-    "$Y" -J "tailscale nc 10.0.0.5 2280" -i "$BIN/kindle_w_key" u@10.0.0.5
+    "$Y" -p 2280 -J "'$BIN/tailscale' nc '10.0.0.5' '2280'" -i "$BIN/kindle_w_key" u@10.0.0.5
 
 reset_case
 SSHK_TEST_FORCE_AUTO_ACCEPT=1 "$BIN/ssh-tailscale" user@myhost.example >/dev/null 2>&1
 assert_dbclient_args "known_hosts probe forces -y on tailscale when unwritable" \
-    -y -i "$NATIVE_KEY" -J "tailscale nc myhost.example 22" user@myhost.example
+    -p 22 -J "'$BIN/tailscale' nc 'myhost.example' '22'" -y -i "$NATIVE_KEY" user@myhost.example
 
 reset_case
 SSHK_TEST_FORCE_AUTO_ACCEPT=1 "$BIN/ssh" user@example.com >/dev/null 2>&1
@@ -210,7 +212,7 @@ assert_dbclient_args "known_hosts probe forces -y on ssh when unwritable" \
 reset_case
 "$BIN/ssh-tailscale" -i work user@host.example >/dev/null 2>&1
 assert_dbclient_args "ssh-tailscale -i name maps to kindle_<name>_key" \
-    "$Y" -J "tailscale nc host.example 22" -i "$BIN/kindle_work_key" user@host.example
+    "$Y" -p 22 -J "'$BIN/tailscale' nc 'host.example' '22'" -i "$BIN/kindle_work_key" user@host.example
 if [ ! -f "$NATIVE_KEY" ]; then
     ok "ssh-tailscale -i name: native key generation skipped"
 else
@@ -222,13 +224,13 @@ reset_case
 # `command -v tailscale` nor any stray host binary can satisfy the lookup.
 SEALED="$SANDBOX/sealed"
 mkdir -p "$SEALED"
-PATH="$SEALED" "$BIN/ssh-tailscale" user@example.com >/tmp/sshr.err 2>&1
+PATH="$SEALED" "$BIN/ssh-tailscale" user@example.com >"$SANDBOX/sshr.err" 2>&1
 _RC=$?
 assert_rc "ssh-tailscale without tailscale binary -> exit 1" "1" "$_RC"
-if grep -q "tailscale" /tmp/sshr.err; then
+if grep -qi "tailscale" "$SANDBOX/sshr.err"; then
     ok "ssh-tailscale missing-binary error mentions tailscale"
 else
-    fail "ssh-tailscale missing-binary error mentions tailscale" "stderr was:" "$(cat /tmp/sshr.err)"
+    fail "ssh-tailscale missing-binary error mentions tailscale" "stderr was:" "$(cat "$SANDBOX/sshr.err")"
 fi
 rm -rf "$SEALED"
 # PATH was sealed above; the wrapper's PATH was already exported at sandbox
@@ -265,12 +267,11 @@ for wrapper in ssh ssh-tailscale scp-tailscale; do
 done
 
 # Single-source-of-truth guards.
-_count=$(grep -rl 'touch /root/.ssh/known_hosts' "$ROOT/extensions/sshk/bin" | wc -l)
+_count=$(grep -rl '^sshk_known_hosts_flags()' "$ROOT/extensions/sshk/bin" | wc -l)
 if [ "$_count" = "1" ]; then
     ok "known_hosts probe defined in exactly one file"
 else
-    fail "known_hosts probe defined in exactly one file" \
-        "found in $_count files: $(grep -rl 'touch /root/.ssh/known_hosts' "$ROOT/extensions/sshk/bin" | tr '\n' ' ')"
+    fail "known_hosts probe defined in exactly one file"
 fi
 _count=$(grep -rl 'preventScreenSaver' "$ROOT/extensions/sshk/bin" | wc -l)
 if [ "$_count" = "1" ]; then
@@ -393,13 +394,13 @@ echo "== scp wrappers =="
 reset_case
 "$BIN/scp" file.txt user@example.com:/tmp/file.txt >/dev/null 2>&1
 assert_dbclient_args "scp forwards files when no key exists yet" \
-    scp file.txt user@example.com:/tmp/file.txt
+    scp -S "$BIN/ssh" file.txt user@example.com:/tmp/file.txt
 
 reset_case
 : > "$NATIVE_KEY"
 "$BIN/scp" file.txt user@example.com:/tmp/file.txt >/dev/null 2>&1
 assert_dbclient_args "scp injects native key when present" \
-    scp -i "$NATIVE_KEY" file.txt user@example.com:/tmp/file.txt
+    scp -S "$BIN/ssh" -i "$NATIVE_KEY" file.txt user@example.com:/tmp/file.txt
 
 reset_case
 FAKE_NO_SCP=1 "$BIN/scp" a b:/c >/dev/null 2>&1
@@ -418,7 +419,7 @@ reset_case
 : > "$BIN/kindle_work_key"
 "$BIN/scp-tailscale" -i work -P 2223 file.txt u@10.0.0.5:/dst >/dev/null 2>&1
 assert_dbclient_args "scp-tailscale forwards user -i/-P to dropbear-scp" \
-    scp -S "$BIN/ssh-tailscale" -i work -P 2223 file.txt u@10.0.0.5:/dst
+    scp -S "$BIN/ssh-tailscale" -i "$BIN/kindle_work_key" -P 2223 file.txt u@10.0.0.5:/dst
 
 reset_case
 : > "$BIN/kindle_native_key"
@@ -432,7 +433,7 @@ write_hosts "work_server u@10.0.0.5:2223 workkey\n"
 : > "$BIN/kindle_workkey_key"
 "$BIN/scp-tailscale" file.txt work_server >/dev/null 2>&1
 assert_dbclient_args "scp-tailscale resolves alias to user@host + port + key" \
-    scp -S "$BIN/ssh-tailscale" -i "$NATIVE_KEY" -P 2223 -i workkey file.txt u@10.0.0.5
+    scp -S "$BIN/ssh-tailscale" -i "$BIN/kindle_workkey_key" -P 2223 file.txt u@10.0.0.5:
 
 reset_case
 # No native key, no alias; just an explicit absolute-path -i (passes through).
@@ -474,7 +475,7 @@ echo "== ssh-menu wrapper =="
 
 MENU_SANDBOX="$SANDBOX/menu"
 mkdir -p "$MENU_SANDBOX/bin" "$MENU_SANDBOX"
-for f in ssh-menu ssh-tailscale sshk-common.sh; do
+for f in ssh-menu ssh-tailscale sshk-common.sh tailscale-common.sh hosts-manage.sh; do
     cp "$ROOT/extensions/sshk/bin/$f" "$MENU_SANDBOX/bin/"
     chmod +x "$MENU_SANDBOX/bin/$f"
 done
@@ -571,7 +572,7 @@ fi
 
 # Happy path: a well-formed alias is appended to hosts.conf.
 reset_case
-printf 'a\nnewhost\nadmin@10.9.9.9\n\n' | PATH="$MENU_SANDBOX/bin:$PATH" SSHK_TEST_LOG="$SSHK_TEST_LOG" "$MENU_SANDBOX/bin/ssh-menu" >/dev/null 2>&1
+printf 'a\nnewhost\nadmin@10.9.9.9\n\n\ndirect\n' | PATH="$MENU_SANDBOX/bin:$PATH" SSHK_TEST_LOG="$SSHK_TEST_LOG" "$MENU_SANDBOX/bin/ssh-menu" >/dev/null 2>&1
 if grep -q '^newhost admin@10.9.9.9$' "$MENU_SANDBOX/hosts.conf"; then
     ok "ssh-menu appends a valid host alias"
 else
@@ -603,61 +604,11 @@ esac
 
 echo "== server scripts =="
 
-# The inbound-server scripts share server-common.sh (mirroring the client's
-# sshk-common.sh) so the port, the pidfile path and the process-match pattern
-# live in exactly one place. The pattern must be a `dropbear .*-p <PORT>` token
-# match: under qemu-arm-static the daemon argv begins with `qemu-arm-static`,
-# so we cannot anchor on `dropbearmulti`, and the phrase is specific enough not
-# to false-positive on the wrapper shell.
-if grep -q 'SSHK_DROPBEAR_PATTERN="dropbear .*-p \$SSHK_SERVER_PORT"' extensions/sshk/bin/server-common.sh && \
-   grep -q 'SSHK_SERVER_PORT="2222"' extensions/sshk/bin/server-common.sh; then
-    ok "server-common.sh defines the sshk dropbear pattern + port"
+if python3 "$ROOT/tests/test-server.py"; then
+    ok "server ownership, lifecycle and failure handling"
 else
-    fail "server-common.sh defines the sshk dropbear pattern + port" \
-        "expected the dropbear pattern and port in server-common.sh"
+    fail "server ownership, lifecycle and failure handling"
 fi
-
-for s in server-start.sh server-stop.sh server-toggle.sh server-status.sh; do
-    if grep -q 'server-common.sh' "extensions/sshk/bin/$s"; then
-        ok "$s sources server-common.sh"
-    else
-        fail "$s sources server-common.sh" "expected a '.' source of server-common.sh"
-    fi
-done
-
-# server-start.sh must overwrite the pidfile with the LIVE daemon PID (the
-# wrapper PID goes stale at once because dropbear double-forks), and must be
-# idempotent so server-toggle.sh cannot race a second daemon onto the port.
-if grep -q 'sshk_server_live_pid' extensions/sshk/bin/server-start.sh && \
-   grep -q 'echo "$LIVE_PID" > "$SSHK_SERVER_PIDFILE"' extensions/sshk/bin/server-start.sh && \
-   grep -q 'is already running' extensions/sshk/bin/server-start.sh; then
-    ok "server-start.sh records the live daemon PID and is idempotent"
-else
-    fail "server-start.sh records the live daemon PID and is idempotent" \
-        "expected a live-PID pidfile write and an already-running guard"
-fi
-
-# server-stop.sh must kill only our dropbear (via the shared pattern).
-if grep -qE 'pkill -f "\$SSHK_DROPBEAR_PATTERN"|pgrep -f "\$SSHK_DROPBEAR_PATTERN"' extensions/sshk/bin/server-stop.sh; then
-    ok "server-stop.sh kills only the sshk dropbear process"
-else
-    fail "server-stop.sh kills only the sshk dropbear process" \
-        "expected pkill/pgrep -f \"\$SSHK_DROPBEAR_PATTERN\" in server-stop.sh"
-fi
-
-# server-status.sh must run cleanly and report the state plus the connect hint.
-# Stub pgrep to report "no match" so the check is deterministic and never
-# writes a pidfile or touches a real process.
-_ss_stub=$(mktemp -d "${TMPDIR:-/tmp}/sshk-pgrep.XXXXXX")
-printf '#!/bin/sh\nexit 1\n' > "$_ss_stub/pgrep"
-chmod +x "$_ss_stub/pgrep"
-_ss_out=$(PATH="$_ss_stub:$PATH" sh extensions/sshk/bin/server-status.sh 2>&1); _ss_rc=$?
-rm -rf "$_ss_stub"
-assert_rc "server-status.sh exits 0" "0" "$_ss_rc"
-case "$_ss_out" in
-    *"SSH server"*) ok "server-status.sh reports server state" ;;
-    *) fail "server-status.sh reports server state" "output: $_ss_out" ;;
-esac
 
 # eips-refresh is invoked directly by ssh-menu ("Refresh E-Ink Screen") but was
 # the only script in bin/ checked in without the executable bit, so that menu
@@ -680,20 +631,11 @@ else
         "expected EXPECTED_TARGET / ACTUAL_TARGET guard in uninstall.sh"
 fi
 
-# authorize-server.sh must pipe the public key through stdin so that a
-# malicious or corrupted key text containing shell metacharacters cannot
-# inject commands on the remote host. We use a string-grep rather than
-# searching for the literal `<<'REMOTE'` here-doc opener: the heredoc
-# opener itself contains a `<<` that bash/dash will (incorrectly) parse as
-# the start of a here-document inside our double-quoted grep argument.
-if grep -q 'sshk_pending_key.pub' authorize-server.sh && \
-   grep -q 'REMOTE' authorize-server.sh && \
-   ! grep -q "grep -qxF '\$PUBKEY_CONTENT" authorize-server.sh && \
-   ! grep -q "echo '\$PUBKEY_CONTENT" authorize-server.sh; then
-    ok "authorize-server.sh does not interpolate PUBKEY_CONTENT into a shell command"
+# Execute the host-management, diagnostics and authorization integration tests.
+if python3 "$ROOT/tests/test-workflows.py"; then
+    ok "host management, setup status and public-key authorization workflows"
 else
-    fail "authorize-server.sh does not interpolate PUBKEY_CONTENT into a shell command" \
-        "expected heredoc-based ssh invocation without \$PUBKEY_CONTENT interpolation"
+    fail "host management, setup status and public-key authorization workflows"
 fi
 
 # uninstall.sh now requires explicit confirmation (typed YES) so a stray tap

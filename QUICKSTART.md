@@ -27,7 +27,7 @@ Get SSH running on your jailbroken Kindle in 3 easy steps!
 1. Extract `sshk.zip`.
 2. Drag the `extensions/` folder into your Kindle's USB drive root (e.g. `/Volumes/Kindle/` or `E:\`).
 3. Safely eject Kindle.
-4. In KUAL, tap **sshk: SSH Client** -> **⚡ 1-Tap Setup (Install & Key)**.
+4. In KUAL, tap **sshk: SSH Client** -> **Setup & Maintenance** -> **Install / Repair**.
 5. Open `kterm` and enjoy!
 
 ---
@@ -41,9 +41,27 @@ To log into your remote server without a password:
    ```bash
    ./authorize-server.sh user@your-server-ip
    ```
-3. That's it! Your Kindle's SSH public key is automatically copied and configured on your server. *(It also authorizes your PC to SSH into your Kindle!)*
+3. That's it! Your Kindle's SSH public key is automatically copied and configured on your server.
 
 ---
+
+### Connect to a Tailscale host
+
+Tailscale must be installed and running separately in userspace mode on the
+Kindle (`tailscaled --tun=userspace-networking`). After login, choose **Tailscale
+> Status** in KUAL or run `ssh-tailscale user@host`. The saved-host editor can
+mark a host as `tailscale`; ordinary `ssh` and `scp` then route it through
+Tailscale automatically. sshk does not install, log in, or start the daemon.
+
+### Connect from your computer into the Kindle
+
+With the Kindle mounted by USB, run `./authorize-kindle.sh` (or pass `/path/to/Kindle` explicitly).
+This uses your computer's `~/.ssh/id_ed25519.pub`; supply another `.pub` file as
+a second argument if needed. Eject USB, run **Setup & Maintenance > Install / Repair**
+once, then **SSH Server > Start Server**. **Server Status** shows the address.
+
+For troubleshooting, open **Setup & Status** in KUAL. For a reminder of which
+public key goes where, open **SSH Keys > Connection Setup Help**.
 
 ### 💡 Common Commands in kterm
 

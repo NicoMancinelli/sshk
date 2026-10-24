@@ -19,8 +19,12 @@ sshk_eips_row 1 "========================================"
 sshk_eips_row 2 "  sshk: SSH Server Status"
 sshk_eips_row 3 "========================================"
 
+LISTENING_PID=""
+for PID in $LIVE_PID; do
+    if sshk_server_listening "$PID"; then LISTENING_PID="$PID"; break; fi
+done
+LIVE_PID="$LISTENING_PID"
 if [ -n "$LIVE_PID" ]; then
-    echo "$LIVE_PID" > "$SSHK_SERVER_PIDFILE"
     sshk_eips_row 5 "Status: RUNNING (PID: $LIVE_PID)"
     sshk_eips_row 6 "Port: $SSHK_SERVER_PORT"
     sshk_eips_row 7 "IP: $WIFI_IP"
@@ -28,6 +32,9 @@ if [ -n "$LIVE_PID" ]; then
     sshk_eips_row 10 "  ssh root@$WIFI_IP -p $SSHK_SERVER_PORT"
     echo "SSH server RUNNING (PID $LIVE_PID) on $WIFI_IP:$SSHK_SERVER_PORT"
     echo "Connect from your PC:  ssh root@$WIFI_IP -p $SSHK_SERVER_PORT"
+elif [ -n "$(sshk_server_legacy_pid)" ]; then
+    sshk_server_legacy_notice
+    exit 1
 else
     sshk_eips_row 5 "Status: STOPPED"
     sshk_eips_row 7 "Start it from KUAL > sshk > SSH Server."
